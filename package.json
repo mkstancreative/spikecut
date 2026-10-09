@@ -1,0 +1,10 @@
+{
+  "name": "spikecut",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "npm run dev -w @spikecut/web",
+    "build": "npm run build -w @spikecut/web",
+    "lint": "npm run lint -w @spikecut/web"
+  }
+}
