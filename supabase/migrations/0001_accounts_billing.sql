@@ -269,3 +269,20 @@ revoke update on public.profiles from authenticated;
 grant update (full_name, avatar_url, country, currency, onboarded, updated_at) on public.profiles to authenticated;
 revoke update on public.workspaces from authenticated;
 grant update (name) on public.workspaces to authenticated;
+
+-- ─────────────────────────────────────────── Finish
+
+-- Tell the API layer to pick up the new tables and functions immediately.
+notify pgrst, 'reload schema';
+
+-- Self-check (shown in the SQL Editor results): expect 9 tables with rls_enabled = true,
+-- 4 functions and 1 trigger.
+select 'table' as kind, relname::text as name, relrowsecurity as rls_enabled
+from pg_class where relnamespace = 'public'::regnamespace and relkind = 'r'
+union all
+select 'function', proname::text, null from pg_proc
+where pronamespace = 'public'::regnamespace
+  and proname in ('is_member', 'handle_new_user', 'get_entitlements', 'spend_credits')
+union all
+select 'trigger', tgname::text, null from pg_trigger where tgname = 'on_auth_user_created'
+order by 1, 2;

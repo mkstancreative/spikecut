@@ -10,7 +10,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "paystack:sync-plans": "tsx --env-file=.env.local scripts/paystack-sync-plans.ts"
+    "paystack:sync-plans": "tsx --env-file=.env.local scripts/paystack-sync-plans.ts",
+    "check:setup": "tsx --env-file=.env.local scripts/check-setup.ts"
   },
   "dependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",
