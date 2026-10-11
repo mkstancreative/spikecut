@@ -6,3 +6,6 @@ dist
 .DS_Store
 .vercel
 *.tsbuildinfo
+.models
+workers/py/.venv
+__pycache__

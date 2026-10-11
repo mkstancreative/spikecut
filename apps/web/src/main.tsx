@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BarChart3, CalendarClock, Film, Link2, Radio, Users } from 'lucide-react'
+import { BarChart3, CalendarClock, Link2 } from 'lucide-react'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, Outlet, RouterProvider } from 'react-router'
 import { RequireAuth } from '@/components/app/RequireAuth'
+import { RequirePlan } from '@/components/app/RequirePlan'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { SiteLayout } from '@/components/layout/SiteLayout'
 import { Faq } from '@/components/sections/Faq'
@@ -12,6 +13,9 @@ import { HowItWorks } from '@/components/sections/HowItWorks'
 import { Pricing } from '@/components/sections/Pricing'
 import { AuthProvider } from '@/lib/auth'
 import Billing from '@/pages/app/Billing'
+import Clips from '@/pages/app/Clips'
+import Creators from '@/pages/app/Creators'
+import Live from '@/pages/app/Live'
 import Onboarding from '@/pages/app/Onboarding'
 import Overview from '@/pages/app/Overview'
 import Settings from '@/pages/app/Settings'
@@ -41,33 +45,6 @@ const stubs: { path: string; title: string; blurb: string }[] = [
 ]
 
 const upcoming = [
-  {
-    path: 'creators',
-    title: 'Creators',
-    description: 'The streamers and channels SpikeCut watches for you.',
-    icon: Users,
-    emptyTitle: 'No creators yet',
-    emptyBody: 'Soon you’ll paste a Twitch, YouTube or Kick link here and SpikeCut will start watching for live streams and uploads.',
-    phase: 'Phase 3',
-  },
-  {
-    path: 'live',
-    title: 'Live',
-    description: 'Streams being watched and scored right now.',
-    icon: Radio,
-    emptyTitle: 'Nothing live yet',
-    emptyBody: 'When a creator you follow goes live, their stream and its real-time spike score will appear here.',
-    phase: 'Phase 3',
-  },
-  {
-    path: 'clips',
-    title: 'Clips',
-    description: 'Detected moments and finished clips.',
-    icon: Film,
-    emptyTitle: 'Your clips will land here',
-    emptyBody: 'Each detected moment becomes a captioned 9:16 clip you can approve, tweak or auto-publish.',
-    phase: 'Phase 4',
-  },
   {
     path: 'schedule',
     title: 'Schedule',
@@ -126,10 +103,22 @@ const router = createBrowserRouter([
       {
         element: <AppLayout />,
         children: [
-          { index: true, element: <Overview /> },
           { path: 'billing', element: <Billing /> },
           { path: 'settings', element: <Settings /> },
-          ...upcoming.map(({ path, ...props }) => ({ path, element: <Upcoming {...props} /> })),
+          {
+            element: (
+              <RequirePlan>
+                <Outlet />
+              </RequirePlan>
+            ),
+            children: [
+              { index: true, element: <Overview /> },
+              { path: 'creators', element: <Creators /> },
+              { path: 'live', element: <Live /> },
+              { path: 'clips', element: <Clips /> },
+              ...upcoming.map(({ path, ...props }) => ({ path, element: <Upcoming {...props} /> })),
+            ],
+          },
         ],
       },
     ],

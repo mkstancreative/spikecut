@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { PageHeader } from '@/components/layout/AppLayout'
 import { cn } from '@/lib/cn'
 import { planName } from '@/lib/pricing'
+import { useCreators } from '@/lib/creators'
 import { useEntitlements, useProfile, useWorkspace } from '@/lib/workspace'
 
 function Stat({ label, value, sub, icon: Icon }: { label: string; value: string; sub?: string; icon: typeof Zap }) {
@@ -22,12 +23,14 @@ export default function Overview() {
   const profile = useProfile()
   const workspace = useWorkspace()
   const ent = useEntitlements(workspace.data?.id)
+  const creators = useCreators(workspace.data?.id)
+  const creatorCount = creators.data?.length ?? 0
   const firstName = profile.data?.full_name?.split(' ')[0]
   const isPaid = ent.data && ent.data.plan_id !== 'free'
 
   const steps = [
     { done: true, label: 'Create your account', to: '/app/settings' },
-    { done: false, label: 'Add the first creator you want to clip', to: '/app/creators' },
+    { done: creatorCount > 0, label: 'Add the first creator you want to clip', to: '/app/creators' },
     { done: false, label: 'Connect YouTube, Instagram or Facebook', to: '/app/accounts' },
     { done: !!isPaid, label: 'Pick a plan or grab a Day Pass', to: '/app/billing' },
   ]
@@ -37,9 +40,9 @@ export default function Overview() {
       <PageHeader title={firstName ? `Hey ${firstName} 👋` : 'Overview'} description="Here’s what SpikeCut is doing for you." />
       <div className="space-y-8 p-4 sm:p-8">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Stat label="Plan" value={ent.data ? planName(ent.data.plan_id) : '—'} icon={Zap} sub={ent.data?.plan_id === 'free' ? 'Browse free · pay to render' : undefined} />
+          <Stat label="Plan" value={ent.data ? planName(ent.data.plan_id) : '—'} icon={Zap} />
           <Stat label="Clip credits" value={ent.data ? ent.data.credits.toLocaleString() : '—'} icon={Film} />
-          <Stat label="Creators watched" value={ent.data ? `0 / ${ent.data.limits.creators}` : '—'} icon={Users} />
+          <Stat label="Creators watched" value={ent.data ? `${creatorCount} / ${ent.data.limits.creators}` : '—'} icon={Users} />
           <Stat label="Social accounts" value={ent.data ? `0 / ${ent.data.limits.socialAccounts}` : '—'} icon={Link2} />
         </div>
 

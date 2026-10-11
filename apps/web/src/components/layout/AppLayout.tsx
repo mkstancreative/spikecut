@@ -68,7 +68,7 @@ function Sidebar() {
               <Zap className="size-3.5 text-spike" />
             </div>
             <p className="mt-1 font-display text-2xl font-bold">{ent.data.credits.toLocaleString()}</p>
-            {ent.data.plan_id === 'free' && <p className="mt-1 text-xs text-spike">Upgrade to render clips →</p>}
+            {ent.data.plan_id === 'free' && <p className="mt-1 text-xs text-spike">Choose a plan to start →</p>}
           </Link>
         )}
         <nav className="flex flex-col gap-0.5">

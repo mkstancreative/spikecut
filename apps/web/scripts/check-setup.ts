@@ -6,7 +6,13 @@
  */
 import { serverEnv } from '../server/env'
 import { paystack } from '../server/paystack'
+import { resolveChannel } from '../server/platforms'
+import { twitchEnabled } from '../server/platforms/twitch'
+import { youtubeEnabled } from '../server/platforms/youtube'
 import { supabaseAdmin } from '../server/supabase'
+import { existsSync } from 'node:fs'
+import { tools } from '../server/worker/config'
+import { run } from '../server/worker/exec'
 
 const tables = [
   'profiles',
@@ -18,6 +24,11 @@ const tables = [
   'day_passes',
   'credit_grants',
   'credit_spends',
+  'creators',
+  'streams',
+  'jobs',
+  'moments',
+  'clips',
 ]
 
 let failures = 0
@@ -56,6 +67,48 @@ try {
   else console.log('  • no SpikeCut plans yet — run: npm run paystack:sync-plans')
 } catch (e) {
   fail(`Paystack: ${(e as Error).message}`)
+}
+
+console.log('\nCreator platforms')
+if (youtubeEnabled()) {
+  try {
+    const ch = await resolveChannel('https://www.youtube.com/@YouTube')
+    ok(`YouTube key works (resolved ${ch.displayName})`)
+  } catch (e) {
+    fail(`YouTube: ${(e as Error).message}`)
+  }
+} else console.log('  • YouTube not configured (YOUTUBE_API_KEY empty)')
+if (twitchEnabled()) {
+  try {
+    const ch = await resolveChannel('twitch.tv/twitch')
+    ok(`Twitch keys work (resolved ${ch.displayName})`)
+  } catch (e) {
+    fail(`Twitch: ${(e as Error).message}`)
+  }
+} else console.log('  • Twitch not configured yet (TWITCH_CLIENT_ID / TWITCH_CLIENT_SECRET empty)')
+
+console.log('\nClip pipeline')
+{
+  const { data, error } = await db.storage.getBucket('clips')
+  if (error || !data) fail(`storage bucket "clips": ${error?.message ?? 'missing'}`)
+  else ok(`storage bucket "clips" (${data.public ? 'PUBLIC — should be private!' : 'private'})`)
+}
+for (const [name, cmd, args] of [
+  ['ffmpeg', tools.ffmpeg, ['-version']],
+  ['yt-dlp', tools.ytdlp, ['--version']],
+  ['whisper.cpp', tools.whisper, ['--help']],
+  ['python + opencv', tools.python, ['-c', 'import cv2, PIL; print(cv2.__version__)']],
+] as const) {
+  try {
+    await run(cmd, [...args])
+    ok(name)
+  } catch (e) {
+    fail(`${name}: ${(e as Error).message.slice(0, 120)}`)
+  }
+}
+for (const [name, path] of [['speech model', tools.whisperModel], ['face model', tools.faceModel], ['caption font', tools.captionFont]]) {
+  if (existsSync(path)) ok(`${name} (${path.split('/').pop()})`)
+  else fail(`${name} missing at ${path}`)
 }
 
 console.log(failures ? `\n${failures} problem(s) found.` : '\nAll good.')

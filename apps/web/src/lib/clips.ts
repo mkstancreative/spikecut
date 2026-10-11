@@ -1,0 +1,123 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { api } from './api'
+import type { Stream } from './creators'
+import { supabase } from './supabase'
+
+export type AnalyzableVideo = Stream & {
+  analysis_status: 'none' | 'queued' | 'running' | 'done' | 'failed'
+  analysis_message: string | null
+}
+
+export type Moment = {
+  id: string
+  stream_id: string
+  start_seconds: number
+  end_seconds: number
+  score: number
+  title: string | null
+  transcript: string | null
+  signals: { hooks?: string[]; loudness?: number; pace?: number }
+  status: 'detected' | 'queued' | 'rendering' | 'rendered' | 'failed'
+}
+
+export type Clip = {
+  id: string
+  moment_id: string
+  stream_id: string
+  video_path: string | null
+  thumbnail_path: string | null
+  duration_seconds: number | null
+  status: 'rendering' | 'ready' | 'failed'
+  error: string | null
+  created_at: string
+}
+
+const busy = (v: AnalyzableVideo) => v.analysis_status === 'queued' || v.analysis_status === 'running'
+
+// Poll quickly while the worker is busy, slowly otherwise.
+export function useVideos(workspaceId: string | undefined) {
+  return useQuery({
+    queryKey: ['videos', workspaceId],
+    enabled: !!workspaceId,
+    refetchInterval: (q) => (q.state.data?.some(busy) ? 3000 : 30_000),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('streams')
+        .select('*')
+        .eq('workspace_id', workspaceId!)
+        .in('status', ['available', 'ended'])
+        .or('duration_seconds.is.null,duration_seconds.gte.60')
+        .order('published_at', { ascending: false })
+        .limit(40)
+      if (error) throw error
+      return data as AnalyzableVideo[]
+    },
+  })
+}
+
+export function useMoments(workspaceId: string | undefined) {
+  return useQuery({
+    queryKey: ['moments', workspaceId],
+    enabled: !!workspaceId,
+    refetchInterval: (q) => (q.state.data?.some((m) => m.status === 'queued' || m.status === 'rendering') ? 3000 : 15_000),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('moments')
+        .select('id, stream_id, start_seconds, end_seconds, score, title, transcript, signals, status')
+        .eq('workspace_id', workspaceId!)
+        .order('score', { ascending: false })
+      if (error) throw error
+      return data as Moment[]
+    },
+  })
+}
+
+export function useClips(workspaceId: string | undefined) {
+  return useQuery({
+    queryKey: ['clips', workspaceId],
+    enabled: !!workspaceId,
+    refetchInterval: (q) => (q.state.data?.some((c) => c.status === 'rendering') ? 3000 : 15_000),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('clips')
+        .select('*')
+        .eq('workspace_id', workspaceId!)
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return data as Clip[]
+    },
+  })
+}
+
+// Clips live in a private bucket; members get short-lived signed URLs.
+export function useSignedUrl(path: string | null) {
+  return useQuery({
+    queryKey: ['signed', path],
+    enabled: !!path,
+    staleTime: 50 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase.storage.from('clips').createSignedUrl(path!, 60 * 60)
+      if (error) throw error
+      return data.signedUrl
+    },
+  })
+}
+
+export function useClipActions() {
+  const queryClient = useQueryClient()
+  const refresh = () => {
+    for (const key of ['videos', 'moments', 'clips', 'entitlements']) queryClient.invalidateQueries({ queryKey: [key] })
+  }
+  return {
+    analyze: useMutation({ mutationFn: (streamId: string) => api(`/streams/${streamId}/analyze`, { method: 'POST' }), onSuccess: refresh }),
+    render: useMutation({ mutationFn: (momentId: string) => api(`/moments/${momentId}/render`, { method: 'POST' }), onSuccess: refresh }),
+  }
+}
+
+export function formatTimestamp(secs: number) {
+  const s = Math.floor(secs)
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const ss = String(s % 60).padStart(2, '0')
+  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`
+}

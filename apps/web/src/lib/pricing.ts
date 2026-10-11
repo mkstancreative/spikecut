@@ -18,6 +18,8 @@ export function parseCurrencies(value: string | undefined): Currency[] {
   return codes.length ? codes : ['NGN']
 }
 
+// 'free' is what the database reports when a workspace has no active plan or Day Pass.
+// There's no free tier: such workspaces are sent to Billing (see RequirePlan).
 export type PlanId = 'free' | 'day-pass' | 'starter' | 'creator' | 'pro' | 'agency'
 
 export type Limits = {
@@ -40,7 +42,7 @@ export type Plan = {
   featured?: boolean
 }
 
-export const freeLimits: Limits = { clips: 0, creators: 2, socialAccounts: 0, seats: 1 }
+export const noPlanLimits: Limits = { clips: 0, creators: 0, socialAccounts: 0, seats: 1 }
 
 export const plans: Plan[] = [
   {
@@ -101,11 +103,11 @@ export function getPlan(id: string): Plan | undefined {
 }
 
 export function planName(id: PlanId | string): string {
-  return id === 'free' ? 'Free' : (getPlan(id)?.name ?? id)
+  return id === 'free' ? 'No plan' : (getPlan(id)?.name ?? id)
 }
 
 export function limitsFor(id: PlanId | string): Limits {
-  return getPlan(id)?.limits ?? freeLimits
+  return getPlan(id)?.limits ?? noPlanLimits
 }
 
 export function formatPrice(amount: number, currency: Currency) {

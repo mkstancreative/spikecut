@@ -30,13 +30,13 @@ export function Hero() {
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Button to="/signup" size="lg">
-              Start clipping free <ArrowRight className="size-4" />
+              Start clipping <ArrowRight className="size-4" />
             </Button>
             <Button to="/how-it-works" variant="secondary" size="lg">
               See how it works
             </Button>
           </div>
-          <p className="mt-4 text-sm text-ink-500">No card to browse. Try everything with a 24-hour Day Pass.</p>
+          <p className="mt-4 text-sm text-ink-500">Start with a 24-hour Day Pass. No subscription needed.</p>
         </motion.div>
 
         <motion.div

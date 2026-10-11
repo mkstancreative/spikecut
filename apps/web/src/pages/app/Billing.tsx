@@ -75,6 +75,9 @@ export default function Billing() {
       <PageHeader title="Billing" description="Your plan, credits and payments." />
       <div className="space-y-8 p-4 sm:p-8">
         {notice && <Alert tone={notice.tone}>{notice.text}</Alert>}
+        {params.get('required') && e?.plan_id === 'free' && (
+          <Alert tone="info">Choose a Day Pass or a monthly plan to start using SpikeCut.</Alert>
+        )}
         {!canManage && workspace.data && (
           <Alert tone="info">Only workspace owners and admins can change billing.</Alert>
         )}
@@ -131,7 +134,7 @@ export default function Billing() {
               {e?.plan_id === 'free' && (
                 <div className="sm:col-span-2">
                   <dd className="text-ink-400">
-                    You can add creators and see detected moments for free. Rendering clips needs a plan or a Day Pass.
+                    Pick a Day Pass or a monthly plan to start watching creators and rendering clips.
                   </dd>
                 </div>
               )}

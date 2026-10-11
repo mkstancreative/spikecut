@@ -4,14 +4,16 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k -n web,api -c green,cyan \"vite\" \"npm:dev:api\"",
+    "dev": "concurrently -k -n web,api,monitor,worker -c green,cyan,magenta,yellow \"vite\" \"npm:dev:api\" \"npm:dev:monitor\" \"npm:dev:worker\"",
     "dev:web": "vite",
-    "dev:api": "tsx watch --env-file-if-exists=.env.local server/dev.ts",
+    "dev:api": "tsx watch --include .env.local --env-file-if-exists=.env.local server/dev.ts",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
     "paystack:sync-plans": "tsx --env-file=.env.local scripts/paystack-sync-plans.ts",
-    "check:setup": "tsx --env-file=.env.local scripts/check-setup.ts"
+    "check:setup": "tsx --env-file=.env.local scripts/check-setup.ts",
+    "dev:monitor": "tsx watch --include .env.local --env-file-if-exists=.env.local server/monitor.ts",
+    "dev:worker": "tsx --env-file-if-exists=.env.local server/worker/index.ts"
   },
   "dependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",

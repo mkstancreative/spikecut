@@ -16,7 +16,7 @@ export function FinalCta() {
             size="lg"
             className="mt-8 bg-ink-950 text-ink-100 shadow-none hover:bg-ink-800"
           >
-            Start clipping free <ArrowRight className="size-4" />
+            Start clipping <ArrowRight className="size-4" />
           </Button>
         </div>
       </div>
