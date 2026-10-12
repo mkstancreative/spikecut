@@ -14,6 +14,10 @@ import { addCreator, refreshCreators, removeCreator, type CreatorRow } from './c
 import { serverEnv } from './env'
 import { PlatformError } from './platforms'
 import { paystack, PaystackError, verifyPaystackSignature, type PaystackSubscription, type PaystackTransaction } from './paystack'
+import { enabledProviders, saveAccounts, SocialError } from './social'
+import { signState, verifyState } from './social/crypto'
+import { googleAuthUrl, googleExchange } from './social/google'
+import { metaAuthUrl, metaExchange } from './social/meta'
 import { supabaseAdmin } from './supabase'
 
 type AuthedUser = { id: string; email: string }
@@ -164,11 +168,12 @@ async function requireActivePlan(workspaceId: string) {
 app.post('/streams/:id/analyze', async (c) => {
   const user = await requireUser(c)
   const db = supabaseAdmin()
-  const { data: stream } = await db
+  const { data: stream, error: lookupErr } = await db
     .from('streams')
     .select('id, workspace_id, status, duration_seconds, analysis_status')
     .eq('id', c.req.param('id'))
     .maybeSingle()
+  if (lookupErr) throw lookupErr // e.g. a missing migration — don't disguise it as "not found"
   if (!stream) throw new BillingError('Video not found', 404)
   await requireMember(user.id, stream.workspace_id)
   await requireActivePlan(stream.workspace_id)
@@ -186,7 +191,12 @@ app.post('/streams/:id/analyze', async (c) => {
 app.post('/moments/:id/render', async (c) => {
   const user = await requireUser(c)
   const db = supabaseAdmin()
-  const { data: moment } = await db.from('moments').select('id, workspace_id, status').eq('id', c.req.param('id')).maybeSingle()
+  const { data: moment, error: lookupErr } = await db
+    .from('moments')
+    .select('id, workspace_id, status')
+    .eq('id', c.req.param('id'))
+    .maybeSingle()
+  if (lookupErr) throw lookupErr
   if (!moment) throw new BillingError('Moment not found', 404)
   await requireMember(user.id, moment.workspace_id)
   await requireActivePlan(moment.workspace_id)
@@ -201,6 +211,132 @@ app.post('/moments/:id/render', async (c) => {
   const { error } = await db.from('jobs').insert({ id: jobId, workspace_id: moment.workspace_id, type: 'render', payload: { momentId: moment.id } })
   if (error) throw error
   await db.from('moments').update({ status: 'queued' }).eq('id', moment.id)
+  return c.json({ ok: true })
+})
+
+// ── Connected accounts (OAuth)
+
+app.get('/accounts/providers', (c) => c.json(enabledProviders()))
+
+app.post('/accounts/connect', async (c) => {
+  const user = await requireUser(c)
+  const { workspaceId, provider } = await c.req.json<{ workspaceId?: string; provider?: 'google' | 'meta' }>()
+  if (!workspaceId || (provider !== 'google' && provider !== 'meta')) throw new BillingError('Unknown provider')
+  await requireMember(user.id, workspaceId)
+  await requireActivePlan(workspaceId)
+  if (!enabledProviders()[provider]) {
+    throw new BillingError(`${provider === 'google' ? 'YouTube' : 'Instagram/Facebook'} isn’t set up on the server yet`, 503)
+  }
+  const state = await signState({ workspaceId, userId: user.id, provider })
+  return c.json({ url: provider === 'google' ? googleAuthUrl(state) : metaAuthUrl(state) })
+})
+
+// Browser lands here from Google/Meta; we finish the exchange and send them back to the Accounts page.
+app.get('/oauth/:provider/callback', async (c) => {
+  const back = (params: Record<string, string>) => c.redirect(`${serverEnv.appUrl}/app/accounts?${new URLSearchParams(params)}`)
+  const denied = c.req.query('error_description') ?? c.req.query('error')
+  if (denied) return back({ error: denied === 'access_denied' ? 'Connection cancelled' : denied })
+  try {
+    const state = await verifyState(c.req.query('state'))
+    if (state.provider !== c.req.param('provider')) throw new Error('Provider mismatch')
+    const code = c.req.query('code')
+    if (!code) throw new Error('Missing authorisation code')
+    const accounts = state.provider === 'google' ? await googleExchange(code) : await metaExchange(code)
+    const { saved, skipped } = await saveAccounts(state.workspaceId, state.userId, accounts)
+    return back({ connected: String(saved), ...(skipped ? { skipped: String(skipped) } : {}) })
+  } catch (e) {
+    console.error('[oauth]', e)
+    return back({ error: (e as Error).message ?? 'Connection failed' })
+  }
+})
+
+app.delete('/accounts/:id', async (c) => {
+  const user = await requireUser(c)
+  const workspaceId = c.req.query('workspaceId')
+  if (!workspaceId) throw new BillingError('Missing workspace')
+  await requireMember(user.id, workspaceId)
+  const { error } = await supabaseAdmin().from('social_accounts').delete().eq('id', c.req.param('id')).eq('workspace_id', workspaceId)
+  if (error) throw error
+  return c.json({ ok: true })
+})
+
+// ── Publishing schedule
+
+app.post('/publications', async (c) => {
+  const user = await requireUser(c)
+  const body = await c.req.json<{ clipId?: string; accountIds?: string[]; title?: string; caption?: string; scheduledAt?: string }>()
+  const db = supabaseAdmin()
+  const { data: clip, error: clipErr } = await db.from('clips').select('id, workspace_id, status').eq('id', body.clipId ?? '').maybeSingle()
+  if (clipErr) throw clipErr
+  if (!clip) throw new BillingError('Clip not found', 404)
+  if (clip.status !== 'ready') throw new BillingError('That clip isn’t ready yet')
+  await requireMember(user.id, clip.workspace_id)
+  await requireActivePlan(clip.workspace_id)
+
+  const ids = [...new Set(body.accountIds ?? [])]
+  if (!ids.length) throw new BillingError('Pick at least one account')
+  const { data: accounts, error: accErr } = await db
+    .from('social_accounts')
+    .select('id, platform, status')
+    .eq('workspace_id', clip.workspace_id)
+    .in('id', ids)
+  if (accErr) throw accErr
+  if (accounts.length !== ids.length) throw new BillingError('One of those accounts isn’t connected to this workspace')
+  const broken = accounts.find((a) => a.status !== 'active')
+  if (broken) throw new BillingError(`Reconnect your ${broken.platform} account first`)
+
+  const when = body.scheduledAt ? new Date(body.scheduledAt) : new Date()
+  if (Number.isNaN(when.getTime())) throw new BillingError('Invalid date')
+  if (when.getTime() < Date.now() - 60_000) throw new BillingError('Pick a time in the future')
+
+  const { error } = await db.from('publications').upsert(
+    accounts.map((a) => ({
+      workspace_id: clip.workspace_id,
+      clip_id: clip.id,
+      social_account_id: a.id,
+      platform: a.platform,
+      title: body.title?.trim() || null,
+      caption: body.caption?.trim() || null,
+      scheduled_at: when.toISOString(),
+      status: 'scheduled',
+      attempts: 0,
+      error: null,
+      created_by: user.id,
+      updated_at: new Date().toISOString(),
+    })),
+    { onConflict: 'clip_id,social_account_id' },
+  )
+  if (error) throw error
+  return c.json({ ok: true, count: accounts.length })
+})
+
+async function ownPublication(c: Context) {
+  const user = await requireUser(c)
+  const { data: pub, error } = await supabaseAdmin()
+    .from('publications')
+    .select('id, workspace_id, status')
+    .eq('id', c.req.param('id'))
+    .maybeSingle()
+  if (error) throw error
+  if (!pub) throw new BillingError('Post not found', 404)
+  await requireMember(user.id, pub.workspace_id)
+  return pub
+}
+
+app.post('/publications/:id/cancel', async (c) => {
+  const pub = await ownPublication(c)
+  if (pub.status !== 'scheduled') throw new BillingError('Only scheduled posts can be cancelled', 409)
+  await supabaseAdmin().from('publications').update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('id', pub.id)
+  return c.json({ ok: true })
+})
+
+app.post('/publications/:id/retry', async (c) => {
+  const pub = await ownPublication(c)
+  if (pub.status !== 'failed' && pub.status !== 'cancelled') throw new BillingError('That post isn’t failed or cancelled', 409)
+  await supabaseAdmin()
+    .from('publications')
+    .update({ status: 'scheduled', scheduled_at: new Date().toISOString(), attempts: 0, error: null, updated_at: new Date().toISOString() })
+    .eq('id', pub.id)
   return c.json({ ok: true })
 })
 
@@ -245,7 +381,7 @@ app.post('/paystack/webhook', async (c) => {
 
 app.onError((err, c) => {
   if (err instanceof BillingError) return c.json({ error: err.message }, err.status)
-  if (err instanceof PlatformError) return c.json({ error: err.message }, 400)
+  if (err instanceof PlatformError || err instanceof SocialError) return c.json({ error: err.message }, 400)
   if (err instanceof PaystackError) {
     console.error('[paystack]', err.status, err.message)
     return c.json({ error: `Payment provider error: ${err.message}` }, 502)

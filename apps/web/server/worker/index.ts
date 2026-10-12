@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { supabaseAdmin } from '../supabase'
 import { mediaDir, MAX_SOURCE_SECONDS, tools } from './config'
 import { cleanupSources, downloadSource, extractAudio, loudness, probeDuration, transcribe } from './media'
+import { publishDue } from './publisher'
 import { renderClip } from './render'
 import { detectMoments } from './scoring'
 
@@ -22,7 +23,7 @@ const db = supabaseAdmin()
 let lastProgressAt = 0
 async function progress(jobId: string, pct: number, message: string, force = false) {
   // Throttle DB writes; the UI polls every few seconds anyway.
-  if (!force && Date.now() - lastProgressAt < 1500) return
+  if (!force && Date.now() - lastProgressAt < 1000) return
   lastProgressAt = Date.now()
   await db.from('jobs').update({ progress: Math.round(pct), message }).eq('id', jobId)
 }
@@ -46,17 +47,22 @@ async function analyze(job: Job) {
       await setStream(streamId, 'running', message)
     }
 
-    await step(5, 'Downloading video')
-    const source = await downloadSource(stream.url, streamId)
+    // Overall bar: download 0–30 · audio 30–35 · transcribe 35–85 · scoring 85–100
+    await step(1, 'Downloading video · 0%')
+    const source = await downloadSource(stream.url, streamId, (p, detail = '') => {
+      const message = `Downloading video · ${Math.round(p)}%${detail}`
+      progress(job.id, 1 + p * 0.29, message)
+      setStream(streamId, 'running', message)
+    })
     const duration = await probeDuration(source)
     if (duration > MAX_SOURCE_SECONDS) throw new Error(`Video is longer than ${Math.round(MAX_SOURCE_SECONDS / 3600)}h`)
 
-    await step(30, 'Extracting audio')
+    await step(30, 'Extracting audio · 100% downloaded')
     const wav = await extractAudio(source, work)
 
-    await step(35, 'Transcribing speech')
+    await step(35, 'Transcribing speech · 0%')
     const words = await transcribe(wav, work, (p) => {
-      const pct = 35 + p * 0.5
+      const pct = 35 + p * 0.5 // whisper reports 0–100
       progress(job.id, pct, `Transcribing speech · ${p}%`)
       setStream(streamId, 'running', `Transcribing speech · ${p}%`)
     })
@@ -136,11 +142,15 @@ async function render(job: Job) {
   const work = join(mediaDir, `job-${job.id}`)
   await mkdir(work, { recursive: true })
   try {
-    await progress(job.id, 10, 'Fetching source video', true)
-    const source = await downloadSource(streamUrl, moment.stream_id)
+    // Overall bar: source 0–25 · speaker + captions + encode 25–90 · upload 90–100
+    await progress(job.id, 1, 'Preparing source video', true)
+    const source = await downloadSource(streamUrl, moment.stream_id, (p, detail = '') =>
+      progress(job.id, 1 + p * 0.24, `Downloading source · ${Math.round(p)}%${detail}`),
+    )
 
-    await progress(job.id, 30, 'Reframing and captioning', true)
+    await progress(job.id, 25, 'Finding the speaker', true)
     const out = await renderClip({
+      onProgress: (p, stage) => progress(job.id, 25 + p * 0.65, `${stage} · ${Math.round(p)}%`),
       source,
       start: Number(moment.start_seconds),
       end: Number(moment.end_seconds),
@@ -148,7 +158,7 @@ async function render(job: Job) {
       workDir: work,
     })
 
-    await progress(job.id, 85, 'Uploading clip', true)
+    await progress(job.id, 90, 'Uploading clip', true)
     const base = `${job.workspace_id}/${clip.id}`
     for (const [file, path, contentType] of [
       [out.video, `${base}.mp4`, 'video/mp4'],
@@ -228,8 +238,13 @@ async function main() {
         await cleanupSources()
         lastCleanup = Date.now()
       }
+      // Scheduled posts go out between clip jobs so a long render never delays them by much.
+      const posted = await publishDue().catch((e) => {
+        console.error('[publisher] loop error:', (e as Error).message ?? e)
+        return 0
+      })
       const worked = await runOne()
-      if (!worked) await new Promise((r) => setTimeout(r, IDLE_MS))
+      if (!worked && !posted) await new Promise((r) => setTimeout(r, IDLE_MS))
     } catch (e) {
       console.error('[worker] loop error:', (e as Error).message ?? e)
       await new Promise((r) => setTimeout(r, IDLE_MS * 3))

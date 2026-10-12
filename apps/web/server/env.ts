@@ -18,7 +18,7 @@ export const serverEnv = {
     return required('PAYSTACK_SECRET_KEY')
   },
   get appUrl() {
-    return (process.env.APP_URL?.trim() || 'http://localhost:5180').replace(/\/$/, '')
+    return (process.env.APP_URL?.trim() || 'https://localhost:5180').replace(/\/$/, '')
   },
   get currencies() {
     return parseCurrencies(process.env.BILLING_CURRENCIES?.trim() || process.env.VITE_BILLING_CURRENCIES?.trim() || undefined)

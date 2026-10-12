@@ -1,4 +1,6 @@
-import { AlertTriangle, Download, Film, LoaderCircle, Sparkles, Wand2 } from 'lucide-react'
+import { AlertTriangle, Download, Film, LoaderCircle, Send, Sparkles, Wand2 } from 'lucide-react'
+import { useState } from 'react'
+import { ScheduleDialog } from '@/components/app/ScheduleDialog'
 import { EmptyState } from '@/components/app/EmptyState'
 import { PageHeader } from '@/components/layout/AppLayout'
 import { ActionButton } from '@/components/ui/ActionButton'
@@ -6,11 +8,13 @@ import { Button } from '@/components/ui/Button'
 import { Alert } from '@/components/ui/Field'
 import {
   formatTimestamp,
+  useActiveJobs,
   useClipActions,
   useClips,
   useMoments,
   useSignedUrl,
   useVideos,
+  type ActiveJob,
   type AnalyzableVideo,
   type Clip,
   type Moment,
@@ -19,7 +23,29 @@ import { cn } from '@/lib/cn'
 import { formatDuration, useCreators } from '@/lib/creators'
 import { useEntitlements, useWorkspace } from '@/lib/workspace'
 
-function ClipPlayer({ clip, title }: { clip: Clip; title?: string | null }) {
+function JobProgress({ job, fallback }: { job?: ActiveJob; fallback?: string | null }) {
+  const pct = job?.status === 'running' ? Math.max(1, Math.round(job.progress)) : 0
+  const label = job?.status === 'queued' ? 'Waiting for the worker' : (job?.message ?? fallback ?? 'Starting')
+  return (
+    <div className="w-full">
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <span className="inline-flex min-w-0 items-center gap-1.5 text-signal">
+          <LoaderCircle className="size-3.5 shrink-0 animate-spin" />
+          <span className="truncate">{label}</span>
+        </span>
+        {job?.status === 'running' && <span className="shrink-0 font-mono text-ink-300">{pct}%</span>}
+      </div>
+      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/8">
+        <div
+          className={cn('h-full rounded-full bg-spike transition-[width] duration-700 ease-out', job?.status !== 'running' && 'w-1/4 animate-pulse bg-white/20')}
+          style={job?.status === 'running' ? { width: `${pct}%` } : undefined}
+        />
+      </div>
+    </div>
+  )
+}
+
+function ClipPlayer({ clip, title, job, onPublish }: { clip: Clip; title?: string | null; job?: ActiveJob; onPublish: () => void }) {
   const video = useSignedUrl(clip.status === 'ready' ? clip.video_path : null)
   const poster = useSignedUrl(clip.status === 'ready' ? clip.thumbnail_path : null)
   return (
@@ -34,14 +60,19 @@ function ClipPlayer({ clip, title }: { clip: Clip; title?: string | null }) {
             {clip.error && <span className="line-clamp-3 text-xs text-ink-500">{clip.error}</span>}
           </div>
         ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-ink-400">
-            <LoaderCircle className="size-6 animate-spin text-spike" />
-            Rendering…
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 text-center">
+            <span className="font-display text-3xl font-bold text-spike">{job?.status === 'running' ? `${Math.round(job.progress)}%` : '…'}</span>
+            <JobProgress job={job} fallback="Rendering" />
           </div>
         )}
       </div>
       <div className="flex items-center gap-2 p-3">
         <p className="min-w-0 flex-1 truncate text-sm">{title ?? 'Clip'}</p>
+        {clip.status === 'ready' && (
+          <button type="button" onClick={onPublish} className="rounded-lg p-1.5 text-ink-400 hover:bg-white/5 hover:text-spike" title="Publish or schedule">
+            <Send className="size-4" />
+          </button>
+        )}
         {video.data && (
           <a href={video.data} download className="rounded-lg p-1.5 text-ink-400 hover:bg-white/5 hover:text-spike" title="Download">
             <Download className="size-4" />
@@ -66,7 +97,7 @@ function ScoreBadge({ score }: { score: number }) {
   )
 }
 
-function MomentRow({ moment, onRender, rendering, disabled }: { moment: Moment; onRender: () => void; rendering: boolean; disabled: boolean }) {
+function MomentRow({ moment, onRender, rendering, disabled, job }: { moment: Moment; onRender: () => void; rendering: boolean; disabled: boolean; job?: ActiveJob }) {
   const len = Math.round(moment.end_seconds - moment.start_seconds)
   return (
     <li className="flex gap-3 rounded-xl bg-ink-850 p-3">
@@ -94,9 +125,9 @@ function MomentRow({ moment, onRender, rendering, disabled }: { moment: Moment; 
         ) : moment.status === 'rendered' ? (
           <span className="text-xs text-spike">Clip ready ↑</span>
         ) : (
-          <span className="inline-flex items-center gap-1.5 text-xs text-ink-400">
-            <LoaderCircle className="size-3.5 animate-spin" /> {moment.status === 'queued' ? 'Queued' : 'Rendering'}
-          </span>
+          <div className="w-40">
+            <JobProgress job={job} fallback={moment.status === 'queued' ? 'Queued' : 'Rendering'} />
+          </div>
         )}
       </div>
     </li>
@@ -112,6 +143,7 @@ function VideoRow({
   onRender,
   renderingId,
   outOfCredits,
+  jobs,
 }: {
   video: AnalyzableVideo
   creatorName?: string
@@ -121,6 +153,7 @@ function VideoRow({
   onRender: (id: string) => void
   renderingId?: string
   outOfCredits: boolean
+  jobs: Map<string, ActiveJob>
 }) {
   const busy = video.analysis_status === 'queued' || video.analysis_status === 'running'
   return (
@@ -137,14 +170,17 @@ function VideoRow({
         <div className="min-w-0 flex-1">
           <p className="line-clamp-2 font-medium">{video.title}</p>
           <p className="mt-1 text-xs text-ink-500">{creatorName}</p>
-          {video.analysis_status !== 'none' && (
+          {busy ? (
+            <div className="mt-3 max-w-md">
+              <JobProgress job={jobs.get(video.id)} fallback={video.analysis_message} />
+            </div>
+          ) : video.analysis_status && video.analysis_status !== 'none' && (
             <p
               className={cn(
                 'mt-2 inline-flex items-center gap-1.5 text-xs',
                 video.analysis_status === 'failed' ? 'text-cut' : video.analysis_status === 'done' ? 'text-spike' : 'text-signal',
               )}
             >
-              {busy && <LoaderCircle className="size-3.5 animate-spin" />}
               {video.analysis_message}
             </p>
           )}
@@ -158,14 +194,14 @@ function VideoRow({
             className="shrink-0"
           >
             <Sparkles className="size-3.5" />
-            {video.analysis_status === 'none' ? 'Find moments' : 'Re-scan'}
+            {video.analysis_status === 'done' || video.analysis_status === 'failed' ? 'Re-scan' : 'Find moments'}
           </ActionButton>
         )}
       </div>
       {!!moments.length && (
         <ul className="space-y-2 border-t border-white/6 p-4">
           {moments.map((m) => (
-            <MomentRow key={m.id} moment={m} onRender={() => onRender(m.id)} rendering={renderingId === m.id} disabled={outOfCredits} />
+            <MomentRow key={m.id} moment={m} onRender={() => onRender(m.id)} rendering={renderingId === m.id} disabled={outOfCredits} job={jobs.get(m.id)} />
           ))}
         </ul>
       )}
@@ -181,6 +217,8 @@ export default function Clips() {
   const videos = useVideos(wsId)
   const moments = useMoments(wsId)
   const clips = useClips(wsId)
+  const jobs = useActiveJobs(wsId)
+  const [publishing, setPublishing] = useState<Clip | null>(null)
   const { analyze, render } = useClipActions()
 
   const creatorName = new Map(creators.data?.map((c) => [c.id, c.display_name]))
@@ -197,6 +235,14 @@ export default function Clips() {
         description={`Find the best moments in your creators’ videos and turn them into vertical clips · ${ent.data?.credits ?? '—'} credits left`}
       />
       <div className="space-y-10 p-4 sm:p-8">
+        {publishing && wsId && (
+          <ScheduleDialog
+            clipId={publishing.id}
+            workspaceId={wsId}
+            defaultTitle={momentById.get(publishing.moment_id)?.title ?? ''}
+            onClose={() => setPublishing(null)}
+          />
+        )}
         {error && <Alert>{error.message}</Alert>}
         {outOfCredits && ent.data && (
           <Alert tone="info">
@@ -210,7 +256,7 @@ export default function Clips() {
             <ul className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {clips.data.map((c) => (
                 <li key={c.id}>
-                  <ClipPlayer clip={c} title={momentById.get(c.moment_id)?.title} />
+                  <ClipPlayer clip={c} title={momentById.get(c.moment_id)?.title} job={jobs.get(c.moment_id)} onPublish={() => setPublishing(c)} />
                 </li>
               ))}
             </ul>
@@ -236,6 +282,7 @@ export default function Clips() {
                   onRender={(id) => render.mutate(id)}
                   renderingId={render.isPending ? render.variables : undefined}
                   outOfCredits={outOfCredits}
+                  jobs={jobs}
                 />
               ))}
             </ul>

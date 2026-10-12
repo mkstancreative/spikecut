@@ -12,22 +12,42 @@ export async function sourcePath(streamId: string) {
 }
 
 /** Download (or reuse) the source video at up to 1080p. */
-export async function downloadSource(url: string, streamId: string, onProgress?: (pct: number) => void) {
+export type ProgressFn = (pct: number, detail?: string) => void
+
+/**
+ * yt-dlp downloads video and audio as separate files and reports each 0→100%,
+ * so we fold them into one overall percentage.
+ */
+export async function downloadSource(url: string, streamId: string, onProgress?: ProgressFn) {
   const out = await sourcePath(streamId)
   if (existsSync(out)) return out
+  let parts = 1
+  let part = -1
   await run(
     tools.ytdlp,
     [
       '--no-playlist',
       '--no-warnings',
       '--newline',
+      '--progress-template', 'download:SC|%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s',
       '-f', 'bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/b',
       '--merge-output-format', 'mp4',
       '-o', out,
       url,
     ],
     {
-      onStderr: () => {},
+      onStdout: (line) => {
+        const formats = line.match(/Downloading \d+ format\(s\): (\S+)/)
+        if (formats) parts = formats[1].split('+').length
+        if (line.includes('[download] Destination:')) part++
+        const m = line.match(/^SC\|\s*([\d.]+)%\|\s*(\S+)\|\s*(\S+)/)
+        if (m) {
+          const overall = ((Math.max(0, part) + Number(m[1]) / 100) / parts) * 100
+          const speed = m[2].includes('N/A') ? '' : ` · ${m[2]}`
+          const eta = /^\d/.test(m[3]) ? ` · ${m[3]} left` : ''
+          onProgress?.(Math.min(100, overall), `${speed}${eta}`)
+        }
+      },
     },
   ).catch(async (e) => {
     await rm(out, { force: true })

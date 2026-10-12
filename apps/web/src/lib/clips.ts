@@ -32,6 +32,40 @@ export type Clip = {
   created_at: string
 }
 
+export type ActiveJob = {
+  id: string
+  type: 'analyze' | 'render'
+  status: 'queued' | 'running'
+  progress: number
+  message: string | null
+  payload: { streamId?: string; momentId?: string }
+}
+
+/** Jobs the worker is on (or about to start), keyed by the video or moment they belong to. */
+export function useActiveJobs(workspaceId: string | undefined) {
+  const query = useQuery({
+    queryKey: ['jobs', workspaceId],
+    enabled: !!workspaceId,
+    refetchInterval: (q) => (q.state.data?.length ? 1500 : 10_000),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('jobs')
+        .select('id, type, status, progress, message, payload')
+        .eq('workspace_id', workspaceId!)
+        .in('status', ['queued', 'running'])
+        .order('created_at')
+      if (error) throw error
+      return data as ActiveJob[]
+    },
+  })
+  const byTarget = new Map<string, ActiveJob>()
+  for (const job of query.data ?? []) {
+    const key = job.payload.streamId ?? job.payload.momentId
+    if (key) byTarget.set(key, job)
+  }
+  return byTarget
+}
+
 const busy = (v: AnalyzableVideo) => v.analysis_status === 'queued' || v.analysis_status === 'running'
 
 // Poll quickly while the worker is busy, slowly otherwise.
@@ -106,7 +140,7 @@ export function useSignedUrl(path: string | null) {
 export function useClipActions() {
   const queryClient = useQueryClient()
   const refresh = () => {
-    for (const key of ['videos', 'moments', 'clips', 'entitlements']) queryClient.invalidateQueries({ queryKey: [key] })
+    for (const key of ['videos', 'moments', 'clips', 'entitlements', 'jobs']) queryClient.invalidateQueries({ queryKey: [key] })
   }
   return {
     analyze: useMutation({ mutationFn: (streamId: string) => api(`/streams/${streamId}/analyze`, { method: 'POST' }), onSuccess: refresh }),

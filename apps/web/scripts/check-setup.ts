@@ -11,6 +11,7 @@ import { twitchEnabled } from '../server/platforms/twitch'
 import { youtubeEnabled } from '../server/platforms/youtube'
 import { supabaseAdmin } from '../server/supabase'
 import { existsSync } from 'node:fs'
+import { enabledProviders } from '../server/social'
 import { tools } from '../server/worker/config'
 import { run } from '../server/worker/exec'
 
@@ -29,6 +30,8 @@ const tables = [
   'jobs',
   'moments',
   'clips',
+  'social_accounts',
+  'publications',
 ]
 
 let failures = 0
@@ -109,6 +112,15 @@ for (const [name, cmd, args] of [
 for (const [name, path] of [['speech model', tools.whisperModel], ['face model', tools.faceModel], ['caption font', tools.captionFont]]) {
   if (existsSync(path)) ok(`${name} (${path.split('/').pop()})`)
   else fail(`${name} missing at ${path}`)
+}
+
+console.log('\nPublishing')
+{
+  const p = enabledProviders()
+  if (process.env.TOKEN_ENCRYPTION_KEY?.trim()) ok('token encryption key set')
+  else fail('TOKEN_ENCRYPTION_KEY missing')
+  p.google ? ok('YouTube posting (Google OAuth client) configured') : console.log('  • YouTube posting not configured (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET empty)')
+  p.meta ? ok('Instagram/Facebook posting (Meta app) configured') : console.log('  • Instagram/Facebook posting not configured (META_APP_ID / META_APP_SECRET empty)')
 }
 
 console.log(failures ? `\n${failures} problem(s) found.` : '\nAll good.')

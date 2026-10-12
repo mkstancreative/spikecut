@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BarChart3, CalendarClock, Link2 } from 'lucide-react'
+import { BarChart3 } from 'lucide-react'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, Outlet, RouterProvider } from 'react-router'
@@ -12,12 +12,14 @@ import { Features } from '@/components/sections/Features'
 import { HowItWorks } from '@/components/sections/HowItWorks'
 import { Pricing } from '@/components/sections/Pricing'
 import { AuthProvider } from '@/lib/auth'
+import Accounts from '@/pages/app/Accounts'
 import Billing from '@/pages/app/Billing'
 import Clips from '@/pages/app/Clips'
 import Creators from '@/pages/app/Creators'
 import Live from '@/pages/app/Live'
 import Onboarding from '@/pages/app/Onboarding'
 import Overview from '@/pages/app/Overview'
+import Schedule from '@/pages/app/Schedule'
 import Settings from '@/pages/app/Settings'
 import Upcoming from '@/pages/app/Upcoming'
 import AuthCallback from '@/pages/auth/AuthCallback'
@@ -45,24 +47,6 @@ const stubs: { path: string; title: string; blurb: string }[] = [
 ]
 
 const upcoming = [
-  {
-    path: 'schedule',
-    title: 'Schedule',
-    description: 'What’s going out, where and when.',
-    icon: CalendarClock,
-    emptyTitle: 'Nothing scheduled',
-    emptyBody: 'Approved clips are queued here and posted at the best time for each platform.',
-    phase: 'Phase 5',
-  },
-  {
-    path: 'accounts',
-    title: 'Connected accounts',
-    description: 'Where your clips get published.',
-    icon: Link2,
-    emptyTitle: 'Connect your channels',
-    emptyBody: 'Link YouTube, Instagram and Facebook so SpikeCut can post for you. TikTok follows once approved.',
-    phase: 'Phase 5',
-  },
   {
     path: 'analytics',
     title: 'Analytics',
@@ -116,6 +100,8 @@ const router = createBrowserRouter([
               { path: 'creators', element: <Creators /> },
               { path: 'live', element: <Live /> },
               { path: 'clips', element: <Clips /> },
+              { path: 'schedule', element: <Schedule /> },
+              { path: 'accounts', element: <Accounts /> },
               ...upcoming.map(({ path, ...props }) => ({ path, element: <Upcoming {...props} /> })),
             ],
           },

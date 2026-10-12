@@ -24,10 +24,13 @@ export async function renderClip(opts: {
   end: number
   words: [number, number, string][] // absolute source times
   workDir: string
+  onProgress?: (pct: number, stage: string) => void
 }) {
   const { source, start, end, workDir } = opts
+  const report = opts.onProgress ?? (() => {})
   const duration = +(end - start).toFixed(3)
 
+  report(0, 'Finding the speaker')
   const face = await trackFace(source, start, end)
   const srcW = face.width
   const srcH = face.height
@@ -45,6 +48,7 @@ export async function renderClip(opts: {
   const rel = opts.words
     .filter(([s, e]) => e > start && s < end)
     .map(([s, e, t]) => [Math.max(0, +(s - start).toFixed(3)), Math.min(duration, +(e - start).toFixed(3)), t])
+  report(20, 'Drawing captions')
   const wordsFile = join(workDir, 'words.json')
   await writeFile(wordsFile, JSON.stringify(rel))
   const captionDir = join(workDir, 'captions')
@@ -53,8 +57,9 @@ export async function renderClip(opts: {
   ).trim()
 
   const video = join(workDir, 'clip.mp4')
+  report(30, 'Encoding video')
   await run(tools.ffmpeg, [
-    '-y', '-v', 'error',
+    '-y', '-v', 'error', '-nostats', '-progress', 'pipe:1',
     '-ss', String(start), '-t', String(duration), '-i', source,
     '-f', 'concat', '-safe', '0', '-i', playlist,
     '-filter_complex',
@@ -65,7 +70,13 @@ export async function renderClip(opts: {
     '-movflags', '+faststart',
     '-t', String(duration),
     video,
-  ])
+  ], {
+    // ffmpeg -progress emits out_time_us=… as it encodes.
+    onStdout: (line) => {
+      const m = line.match(/^out_time_us=(\d+)/)
+      if (m) report(30 + Math.min(1, Number(m[1]) / 1e6 / duration) * 70, 'Encoding video')
+    },
+  })
 
   const thumbnail = join(workDir, 'thumb.jpg')
   await run(tools.ffmpeg, ['-y', '-v', 'error', '-ss', String(Math.min(1.5, duration / 3)), '-i', video, '-frames:v', '1', '-q:v', '4', thumbnail])
