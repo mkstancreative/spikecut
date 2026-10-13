@@ -7,6 +7,7 @@ import { RequireAuth } from '@/components/app/RequireAuth'
 import { RequirePlan } from '@/components/app/RequirePlan'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { SiteLayout } from '@/components/layout/SiteLayout'
+import { ConfirmProvider } from '@/components/ui/ConfirmDialog'
 import { Faq } from '@/components/sections/Faq'
 import { Features } from '@/components/sections/Features'
 import { HowItWorks } from '@/components/sections/HowItWorks'
@@ -119,7 +120,9 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <RouterProvider router={router} />
+        <ConfirmProvider>
+          <RouterProvider router={router} />
+        </ConfirmProvider>
       </AuthProvider>
     </QueryClientProvider>
   </StrictMode>,

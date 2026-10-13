@@ -79,7 +79,17 @@ function findHooks(text: string): string[] {
   return HOOKS.filter((h) => t.includes(` ${h} `))
 }
 
-export function detectMoments(words: Word[], db: number[], duration: number): DetectedMoment[] {
+/**
+ * `relative` (default, for whole videos): scores are spread 1–99 across this video's candidates.
+ * `absolute` (for live windows): a fixed curve, so a score of 80 means the same thing in every window —
+ * needed for auto-clip thresholds.
+ */
+export function detectMoments(
+  words: Word[],
+  db: number[],
+  duration: number,
+  opts: { scale?: 'relative' | 'absolute'; maxMoments?: number } = {},
+): DetectedMoment[] {
   if (words.length < 20 || duration < MIN_LEN + 5) return []
 
   // Normalise loudness against audible windows only (ignore silence when computing the baseline).
@@ -150,7 +160,7 @@ export function detectMoments(words: Word[], db: number[], duration: number): De
   candidates.sort((a, b) => b.raw - a.raw)
   const picked: Candidate[] = []
   for (const c of candidates) {
-    if (picked.length >= MAX_MOMENTS) break
+    if (picked.length >= (opts.maxMoments ?? MAX_MOMENTS)) break
     if (picked.every((p) => c.end + MIN_GAP <= p.start || c.start >= p.end + MIN_GAP)) picked.push(c)
   }
 
@@ -158,8 +168,12 @@ export function detectMoments(words: Word[], db: number[], duration: number): De
   const raws = candidates.map((c) => c.raw)
   const lo = median(raws)
   const hi = Math.max(...raws)
+  const clamp = (n: number) => Math.round(Math.min(99, Math.max(1, n)))
   for (const p of picked) {
-    p.score = Math.round(Math.min(99, Math.max(1, 50 + (49 * (p.raw - lo)) / Math.max(0.001, hi - lo))))
+    p.score =
+      opts.scale === 'absolute'
+        ? clamp(100 * (1 - Math.exp(-Math.max(0, p.raw) / 2.2))) // raw 2 → 60, 3 → 74, 4 → 84, 5 → 90
+        : clamp(50 + (49 * (p.raw - lo)) / Math.max(0.001, hi - lo))
   }
   return picked.map(({ raw: _raw, ...m }) => m)
 }

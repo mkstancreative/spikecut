@@ -148,13 +148,29 @@ function toSnapshot(v: VideoItem): StreamSnapshot {
   }
 }
 
+/** The channel's /live page points at its current (or next scheduled) broadcast, if any. No quota cost. */
+async function currentLiveId(channelId: string): Promise<string | null> {
+  const res = await fetch(`https://www.youtube.com/channel/${encodeURIComponent(channelId)}/live`, {
+    headers: { 'Accept-Language': 'en', Cookie: 'CONSENT=YES+1' },
+  }).catch(() => null)
+  if (!res?.ok) return null
+  const html = await res.text()
+  const canonical = html.match(/<link rel="canonical" href="https:\/\/www\.youtube\.com\/watch\?v=([\w-]{11})"/)
+  return canonical?.[1] ?? null
+}
+
 /**
  * Latest videos per channel with live status. Costs 1 quota unit per 50 videos
  * (videos.list), regardless of how many channels they come from.
  */
 export async function fetchYouTube(channelIds: string[], perChannel = 8): Promise<Map<string, StreamSnapshot[]>> {
   const result = new Map<string, StreamSnapshot[]>(channelIds.map((id) => [id, []]))
-  const idLists = await Promise.all(channelIds.map((id) => recentVideoIds(id, perChannel).catch(() => [] as string[])))
+  const idLists = await Promise.all(
+    channelIds.map(async (id) => {
+      const [recent, live] = await Promise.all([recentVideoIds(id, perChannel).catch(() => [] as string[]), currentLiveId(id)])
+      return live ? [live, ...recent] : recent
+    }),
+  )
   const allIds = [...new Set(idLists.flat())]
 
   for (let i = 0; i < allIds.length; i += 50) {

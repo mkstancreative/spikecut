@@ -27,12 +27,14 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
 
 export function metaAuthUrl(state: string) {
   const url = new URL(`https://www.facebook.com/${version()}/dialog/oauth`)
+  // "Facebook Login for Business" apps can use a saved Login configuration (config_id) instead of a scope list.
+  const configId = process.env.META_LOGIN_CONFIG_ID?.trim()
   url.search = new URLSearchParams({
     client_id: process.env.META_APP_ID!.trim(),
     redirect_uri: redirectUri('meta'),
     state,
     response_type: 'code',
-    scope: SCOPES.join(','),
+    ...(configId ? { config_id: configId, override_default_response_type: 'true' } : { scope: SCOPES.join(',') }),
   }).toString()
   return url.toString()
 }

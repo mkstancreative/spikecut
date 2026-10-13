@@ -10,6 +10,7 @@ import {
   upsertSubscription,
   workspaceForCustomer,
 } from './billing'
+import { queueRender } from './clips'
 import { addCreator, refreshCreators, removeCreator, type CreatorRow } from './creators'
 import { serverEnv } from './env'
 import { PlatformError } from './platforms'
@@ -144,6 +145,28 @@ app.delete('/creators/:id', async (c) => {
   return c.json({ ok: true })
 })
 
+app.patch('/creators/:id', async (c) => {
+  const user = await requireUser(c)
+  const body = await c.req.json<{ capture_live?: boolean; auto_clip?: boolean; auto_clip_min_score?: number }>()
+  const db = supabaseAdmin()
+  const { data: creator, error: lookupErr } = await db.from('creators').select('id, workspace_id').eq('id', c.req.param('id')).maybeSingle()
+  if (lookupErr) throw lookupErr
+  if (!creator) throw new BillingError('Creator not found', 404)
+  await requireMember(user.id, creator.workspace_id)
+
+  const patch: Record<string, unknown> = {}
+  if (typeof body.capture_live === 'boolean') patch.capture_live = body.capture_live
+  if (typeof body.auto_clip === 'boolean') patch.auto_clip = body.auto_clip
+  if (body.auto_clip_min_score != null) {
+    const n = Math.round(Number(body.auto_clip_min_score))
+    if (!(n >= 1 && n <= 99)) throw new BillingError('Score must be between 1 and 99')
+    patch.auto_clip_min_score = n
+  }
+  const { error } = await db.from('creators').update(patch).eq('id', creator.id)
+  if (error) throw error
+  return c.json({ ok: true })
+})
+
 app.post('/creators/:id/refresh', async (c) => {
   const user = await requireUser(c)
   const { data: creator } = await supabaseAdmin()
@@ -202,16 +225,82 @@ app.post('/moments/:id/render', async (c) => {
   await requireActivePlan(moment.workspace_id)
   if (['queued', 'rendering', 'rendered'].includes(moment.status)) throw new BillingError('This moment is already a clip', 409)
 
-  // Reserve 1 credit up front (refunded by the worker if rendering fails).
-  const jobId = crypto.randomUUID()
-  const { data: charged, error: spendErr } = await db.rpc('spend_credits', { ws: moment.workspace_id, n: 1, spend_ref: `render:${jobId}` })
-  if (spendErr) throw spendErr
-  if (!charged) throw new BillingError('You’re out of clip credits. Top up with a Day Pass or upgrade your plan.', 403)
-
-  const { error } = await db.from('jobs').insert({ id: jobId, workspace_id: moment.workspace_id, type: 'render', payload: { momentId: moment.id } })
-  if (error) throw error
-  await db.from('moments').update({ status: 'queued' }).eq('id', moment.id)
+  await queueRender(moment.workspace_id, moment.id)
   return c.json({ ok: true })
+})
+
+// ── Cleaning up clips & moments
+
+app.delete('/clips/:id', async (c) => {
+  const user = await requireUser(c)
+  const db = supabaseAdmin()
+  const { data: clip, error } = await db
+    .from('clips')
+    .select('id, workspace_id, moment_id, status, video_path, thumbnail_path')
+    .eq('id', c.req.param('id'))
+    .maybeSingle()
+  if (error) throw error
+  if (!clip) throw new BillingError('Clip not found', 404)
+  await requireMember(user.id, clip.workspace_id)
+  if (clip.status === 'rendering') throw new BillingError('Wait for this clip to finish rendering first', 409)
+
+  const { count: posting } = await db
+    .from('publications')
+    .select('id', { count: 'exact', head: true })
+    .eq('clip_id', clip.id)
+    .eq('status', 'publishing')
+  if (posting) throw new BillingError('This clip is being posted right now — try again in a minute', 409)
+
+  const files = [clip.video_path, clip.thumbnail_path].filter(Boolean) as string[]
+  if (files.length) {
+    const { error: rmErr } = await db.storage.from('clips').remove(files)
+    if (rmErr) throw rmErr
+  }
+  // Deleting the clip also removes its scheduled/past post records (FK cascade).
+  // The moment goes away too, so it doesn't reappear as "Make clip".
+  const { error: delErr } = await db.from('moments').delete().eq('id', clip.moment_id)
+  if (delErr) throw delErr
+  return c.json({ ok: true })
+})
+
+app.delete('/moments/:id', async (c) => {
+  const user = await requireUser(c)
+  const db = supabaseAdmin()
+  const { data: moment, error } = await db.from('moments').select('id, workspace_id, status').eq('id', c.req.param('id')).maybeSingle()
+  if (error) throw error
+  if (!moment) throw new BillingError('Moment not found', 404)
+  await requireMember(user.id, moment.workspace_id)
+  if (!['detected', 'failed'].includes(moment.status)) throw new BillingError('That moment is already a clip — delete the clip instead', 409)
+  const { error: delErr } = await db.from('moments').delete().eq('id', moment.id)
+  if (delErr) throw delErr
+  return c.json({ ok: true })
+})
+
+// Clear every unused moment from one video (keeps anything already turned into a clip).
+app.delete('/streams/:id/moments', async (c) => {
+  const user = await requireUser(c)
+  const db = supabaseAdmin()
+  const { data: stream, error } = await db.from('streams').select('id, workspace_id, analysis_status').eq('id', c.req.param('id')).maybeSingle()
+  if (error) throw error
+  if (!stream) throw new BillingError('Video not found', 404)
+  await requireMember(user.id, stream.workspace_id)
+  if (stream.analysis_status === 'queued' || stream.analysis_status === 'running') {
+    throw new BillingError('Wait for the scan to finish first', 409)
+  }
+  const { data: removed, error: delErr } = await db
+    .from('moments')
+    .delete()
+    .eq('stream_id', stream.id)
+    .in('status', ['detected', 'failed'])
+    .select('id')
+  if (delErr) throw delErr
+  const { count: kept } = await db.from('moments').select('id', { count: 'exact', head: true }).eq('stream_id', stream.id)
+  // With nothing left, reset the video so "Find moments" shows again.
+  await db
+    .from('streams')
+    .update(kept ? { analysis_message: `${kept} clip${kept === 1 ? '' : 's'} kept` } : { analysis_status: 'none', analysis_message: null })
+    .eq('id', stream.id)
+  return c.json({ ok: true, removed: removed?.length ?? 0 })
 })
 
 // ── Connected accounts (OAuth)

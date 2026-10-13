@@ -4,6 +4,7 @@ import { EmptyState } from '@/components/app/EmptyState'
 import { StreamCard } from '@/components/app/StreamCard'
 import { PageHeader } from '@/components/layout/AppLayout'
 import { ActionButton } from '@/components/ui/ActionButton'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { Alert, inputClasses } from '@/components/ui/Field'
 import { cn } from '@/lib/cn'
 import { platformMeta, timeAgo, useCreatorActions, useCreators, useStreams, type Creator } from '@/lib/creators'
@@ -11,6 +12,7 @@ import { useEntitlements, useWorkspace } from '@/lib/workspace'
 
 function CreatorCard({ creator, onRemove, onRefresh, busy }: { creator: Creator; onRemove: () => void; onRefresh: () => void; busy: boolean }) {
   const meta = platformMeta[creator.platform]
+  const confirm = useConfirm()
   return (
     <li className="card flex items-center gap-4 p-4">
       <div className="relative shrink-0">
@@ -49,7 +51,15 @@ function CreatorCard({ creator, onRemove, onRefresh, busy }: { creator: Creator;
         </button>
         <button
           type="button"
-          onClick={() => confirm(`Stop watching ${creator.display_name}?`) && onRemove()}
+          onClick={async () => {
+            const ok = await confirm({
+              title: `Stop watching ${creator.display_name}?`,
+              body: 'SpikeCut stops checking this channel. Their videos, detected moments and clips are removed from your workspace too.',
+              confirmLabel: 'Remove creator',
+              tone: 'danger',
+            })
+            if (ok) onRemove()
+          }}
           title="Remove"
           className="rounded-lg p-2 text-ink-400 hover:bg-cut/10 hover:text-cut"
         >

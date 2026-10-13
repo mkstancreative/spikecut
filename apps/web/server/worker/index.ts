@@ -7,6 +7,7 @@
 import { mkdir, readFile, rm } from 'node:fs/promises'
 import { hostname } from 'node:os'
 import { join } from 'node:path'
+import { pickSegments, readSegments, segmentsToVideo, sessionDir } from '../live/segments'
 import { supabaseAdmin } from '../supabase'
 import { mediaDir, MAX_SOURCE_SECONDS, tools } from './config'
 import { cleanupSources, downloadSource, extractAudio, loudness, probeDuration, transcribe } from './media'
@@ -144,17 +145,35 @@ async function render(job: Job) {
   try {
     // Overall bar: source 0–25 · speaker + captions + encode 25–90 · upload 90–100
     await progress(job.id, 1, 'Preparing source video', true)
-    const source = await downloadSource(streamUrl, moment.stream_id, (p, detail = '') =>
-      progress(job.id, 1 + p * 0.24, `Downloading source · ${Math.round(p)}%${detail}`),
-    )
+    const signals = moment.signals as { words?: [number, number, string][]; live?: { sessionId: string } }
+    let start = Number(moment.start_seconds)
+    let end = Number(moment.end_seconds)
+    let words = signals.words ?? []
+    let source: string
+
+    if (signals.live) {
+      // Live moment: stitch the recorded chunks around it instead of downloading anything.
+      const segs = pickSegments(await readSegments(sessionDir(moment.stream_id, signals.live.sessionId)), start - 1, end + 1)
+      if (!segs.length) throw new Error('The live recording for this moment has expired')
+      source = await segmentsToVideo(segs, work)
+      const offset = segs[0].start
+      start -= offset
+      end -= offset
+      words = words.map(([s, e, t]) => [s - offset, e - offset, t])
+      await progress(job.id, 25, 'Live footage ready', true)
+    } else {
+      source = await downloadSource(streamUrl, moment.stream_id, (p, detail = '') =>
+        progress(job.id, 1 + p * 0.24, `Downloading source · ${Math.round(p)}%${detail}`),
+      )
+    }
 
     await progress(job.id, 25, 'Finding the speaker', true)
     const out = await renderClip({
       onProgress: (p, stage) => progress(job.id, 25 + p * 0.65, `${stage} · ${Math.round(p)}%`),
       source,
-      start: Number(moment.start_seconds),
-      end: Number(moment.end_seconds),
-      words: (moment.signals as { words: [number, number, string][] }).words ?? [],
+      start,
+      end,
+      words,
       workDir: work,
     })
 

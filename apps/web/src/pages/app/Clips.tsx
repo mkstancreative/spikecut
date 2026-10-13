@@ -1,10 +1,12 @@
-import { AlertTriangle, Download, Film, LoaderCircle, Send, Sparkles, Wand2 } from 'lucide-react'
-import { useState } from 'react'
+import { AlertTriangle, Download, Film, LoaderCircle, Send, Sparkles, Trash2, Wand2, X } from 'lucide-react'
+import { useId, useState } from 'react'
 import { ScheduleDialog } from '@/components/app/ScheduleDialog'
 import { EmptyState } from '@/components/app/EmptyState'
 import { PageHeader } from '@/components/layout/AppLayout'
 import { ActionButton } from '@/components/ui/ActionButton'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { Button } from '@/components/ui/Button'
+import { CollapsibleSection, FoldToggle } from '@/components/ui/Collapsible'
 import { Alert } from '@/components/ui/Field'
 import {
   formatTimestamp,
@@ -21,6 +23,7 @@ import {
 } from '@/lib/clips'
 import { cn } from '@/lib/cn'
 import { formatDuration, useCreators } from '@/lib/creators'
+import { usePersistentState } from '@/lib/usePersistentState'
 import { useEntitlements, useWorkspace } from '@/lib/workspace'
 
 function JobProgress({ job, fallback }: { job?: ActiveJob; fallback?: string | null }) {
@@ -45,7 +48,22 @@ function JobProgress({ job, fallback }: { job?: ActiveJob; fallback?: string | n
   )
 }
 
-function ClipPlayer({ clip, title, job, onPublish }: { clip: Clip; title?: string | null; job?: ActiveJob; onPublish: () => void }) {
+function ClipPlayer({
+  clip,
+  title,
+  job,
+  onPublish,
+  onDelete,
+  deleting,
+}: {
+  clip: Clip
+  title?: string | null
+  job?: ActiveJob
+  onPublish: () => void
+  onDelete: () => void
+  deleting: boolean
+}) {
+  const confirm = useConfirm()
   const video = useSignedUrl(clip.status === 'ready' ? clip.video_path : null)
   const poster = useSignedUrl(clip.status === 'ready' ? clip.thumbnail_path : null)
   return (
@@ -78,6 +96,25 @@ function ClipPlayer({ clip, title, job, onPublish }: { clip: Clip; title?: strin
             <Download className="size-4" />
           </a>
         )}
+        {clip.status !== 'rendering' && (
+          <button
+            type="button"
+            disabled={deleting}
+            onClick={async () => {
+              const ok = await confirm({
+                title: 'Delete this clip?',
+                body: 'The video is removed from storage and any scheduled posts for it are cancelled. The credit used to make it isn’t refunded.',
+                confirmLabel: 'Delete clip',
+                tone: 'danger',
+              })
+              if (ok) onDelete()
+            }}
+            className="rounded-lg p-1.5 text-ink-400 hover:bg-cut/10 hover:text-cut disabled:opacity-50"
+            title="Delete clip"
+          >
+            {deleting ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+          </button>
+        )}
       </div>
     </div>
   )
@@ -97,7 +134,21 @@ function ScoreBadge({ score }: { score: number }) {
   )
 }
 
-function MomentRow({ moment, onRender, rendering, disabled, job }: { moment: Moment; onRender: () => void; rendering: boolean; disabled: boolean; job?: ActiveJob }) {
+function MomentRow({
+  moment,
+  onRender,
+  onDismiss,
+  rendering,
+  disabled,
+  job,
+}: {
+  moment: Moment
+  onRender: () => void
+  onDismiss: () => void
+  rendering: boolean
+  disabled: boolean
+  job?: ActiveJob
+}) {
   const len = Math.round(moment.end_seconds - moment.start_seconds)
   return (
     <li className="flex gap-3 rounded-xl bg-ink-850 p-3">
@@ -117,11 +168,16 @@ function MomentRow({ moment, onRender, rendering, disabled, job }: { moment: Mom
           </div>
         )}
       </div>
-      <div className="shrink-0 self-center">
+      <div className="flex shrink-0 items-center gap-1 self-center">
         {moment.status === 'detected' || moment.status === 'failed' ? (
-          <ActionButton size="sm" onClick={onRender} loading={rendering} disabled={disabled}>
-            <Wand2 className="size-3.5" /> {moment.status === 'failed' ? 'Retry' : 'Make clip'}
-          </ActionButton>
+          <>
+            <ActionButton size="sm" onClick={onRender} loading={rendering} disabled={disabled}>
+              <Wand2 className="size-3.5" /> {moment.status === 'failed' ? 'Retry' : 'Make clip'}
+            </ActionButton>
+            <button type="button" onClick={onDismiss} title="Dismiss this moment" className="rounded-lg p-2 text-ink-500 hover:bg-white/5 hover:text-ink-100">
+              <X className="size-4" />
+            </button>
+          </>
         ) : moment.status === 'rendered' ? (
           <span className="text-xs text-spike">Clip ready ↑</span>
         ) : (
@@ -144,6 +200,11 @@ function VideoRow({
   renderingId,
   outOfCredits,
   jobs,
+  onDismiss,
+  onClear,
+  clearing,
+  folded,
+  onToggleFold,
 }: {
   video: AnalyzableVideo
   creatorName?: string
@@ -154,8 +215,16 @@ function VideoRow({
   renderingId?: string
   outOfCredits: boolean
   jobs: Map<string, ActiveJob>
+  onDismiss: (momentId: string) => void
+  onClear: () => void
+  clearing: boolean
+  folded: boolean
+  onToggleFold: () => void
 }) {
+  const confirm = useConfirm()
+  const listId = useId()
   const busy = video.analysis_status === 'queued' || video.analysis_status === 'running'
+  const unused = moments.filter((m) => m.status === 'detected' || m.status === 'failed').length
   return (
     <li className="card overflow-hidden">
       <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
@@ -199,11 +268,47 @@ function VideoRow({
         )}
       </div>
       {!!moments.length && (
-        <ul className="space-y-2 border-t border-white/6 p-4">
-          {moments.map((m) => (
-            <MomentRow key={m.id} moment={m} onRender={() => onRender(m.id)} rendering={renderingId === m.id} disabled={outOfCredits} job={jobs.get(m.id)} />
-          ))}
-        </ul>
+        <div className={cn('border-t border-white/6 px-4', folded ? 'py-2.5' : 'pt-3 pb-4')}>
+          <div className={cn('flex items-center justify-between gap-3', !folded && 'mb-3')}>
+            <FoldToggle open={!folded} onToggle={onToggleFold} controls={listId}>
+              {moments.length} moment{moments.length === 1 ? '' : 's'}
+              {unused > 0 && <span className="text-ink-500">· {unused} waiting</span>}
+            </FoldToggle>
+            {unused > 0 && !busy && !folded && (
+              <button
+                type="button"
+                disabled={clearing}
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: `Clear ${unused} unused moment${unused === 1 ? '' : 's'}?`,
+                    body: 'Moments you haven’t turned into clips are removed from this video. Clips you’ve made are kept.',
+                    confirmLabel: 'Clear moments',
+                    tone: 'danger',
+                  })
+                  if (ok) onClear()
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-ink-400 hover:bg-cut/10 hover:text-cut disabled:opacity-50"
+              >
+                {clearing ? <LoaderCircle className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />} Clear unused
+              </button>
+            )}
+          </div>
+          {!folded && (
+          <ul id={listId} className="space-y-2">
+            {moments.map((m) => (
+              <MomentRow
+                key={m.id}
+                moment={m}
+                onRender={() => onRender(m.id)}
+                onDismiss={() => onDismiss(m.id)}
+                rendering={renderingId === m.id}
+                disabled={outOfCredits}
+                job={jobs.get(m.id)}
+              />
+            ))}
+          </ul>
+          )}
+        </div>
       )}
     </li>
   )
@@ -219,14 +324,22 @@ export default function Clips() {
   const clips = useClips(wsId)
   const jobs = useActiveJobs(wsId)
   const [publishing, setPublishing] = useState<Clip | null>(null)
-  const { analyze, render } = useClipActions()
+  // Fold state is remembered per browser.
+  const [clipsOpen, setClipsOpen] = usePersistentState('spikecut:clips:open', true)
+  const [scanOpen, setScanOpen] = usePersistentState('spikecut:scan:open', true)
+  const [foldedVideos, setFoldedVideos] = usePersistentState<string[]>('spikecut:scan:folded', [])
+  const toggleVideo = (id: string) =>
+    setFoldedVideos((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  const { analyze, render, deleteClip, dismissMoment, clearMoments } = useClipActions()
 
   const creatorName = new Map(creators.data?.map((c) => [c.id, c.display_name]))
   const momentById = new Map(moments.data?.map((m) => [m.id, m]))
   const momentsByVideo = new Map<string, Moment[]>()
   for (const m of moments.data ?? []) momentsByVideo.set(m.stream_id, [...(momentsByVideo.get(m.stream_id) ?? []), m])
   const outOfCredits = (ent.data?.credits ?? 0) < 1
-  const error = (analyze.error ?? render.error) as Error | null
+  const videosWithMoments = (videos.data ?? []).filter((v) => momentsByVideo.has(v.id)).map((v) => v.id)
+  const allFolded = videosWithMoments.length > 0 && videosWithMoments.every((id) => foldedVideos.includes(id))
+  const error = (analyze.error ?? render.error ?? deleteClip.error ?? dismissMoment.error ?? clearMoments.error) as Error | null
 
   return (
     <>
@@ -251,24 +364,43 @@ export default function Clips() {
         )}
 
         {!!clips.data?.length && (
-          <section>
-            <h2 className="font-display text-xl font-bold">Your clips</h2>
+          <CollapsibleSection title="Your clips" count={clips.data.length} open={clipsOpen} onToggle={() => setClipsOpen(!clipsOpen)}>
             <ul className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {clips.data.map((c) => (
                 <li key={c.id}>
-                  <ClipPlayer clip={c} title={momentById.get(c.moment_id)?.title} job={jobs.get(c.moment_id)} onPublish={() => setPublishing(c)} />
+                  <ClipPlayer
+                    clip={c}
+                    title={momentById.get(c.moment_id)?.title}
+                    job={jobs.get(c.moment_id)}
+                    onPublish={() => setPublishing(c)}
+                    onDelete={() => deleteClip.mutate(c.id)}
+                    deleting={deleteClip.isPending && deleteClip.variables === c.id}
+                  />
                 </li>
               ))}
             </ul>
-          </section>
+          </CollapsibleSection>
         )}
 
-        <section>
-          <h2 className="font-display text-xl font-bold">Find moments</h2>
-          <p className="mt-1 text-sm text-ink-400">
-            SpikeCut transcribes the video and scores every stretch for energy, hooks and pace. Finding moments is free — each clip
-            you make uses 1 credit.
-          </p>
+        <CollapsibleSection
+          title="Find moments"
+          count={videos.data?.length}
+          open={scanOpen}
+          onToggle={() => setScanOpen(!scanOpen)}
+          description="SpikeCut transcribes the video and scores every stretch for energy, hooks and pace. Finding moments is free — each clip you make uses 1 credit."
+          actions={
+            scanOpen &&
+            videosWithMoments.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setFoldedVideos(allFolded ? [] : videosWithMoments)}
+                className="rounded-lg px-2 py-1 text-xs text-ink-400 hover:bg-white/5 hover:text-ink-100"
+              >
+                {allFolded ? 'Expand all moments' : 'Collapse all moments'}
+              </button>
+            )
+          }
+        >
           {videos.data?.length ? (
             <ul className="mt-4 space-y-4">
               {videos.data.map((v) => (
@@ -283,6 +415,11 @@ export default function Clips() {
                   renderingId={render.isPending ? render.variables : undefined}
                   outOfCredits={outOfCredits}
                   jobs={jobs}
+                  onDismiss={(id) => dismissMoment.mutate(id)}
+                  onClear={() => clearMoments.mutate(v.id)}
+                  clearing={clearMoments.isPending && clearMoments.variables === v.id}
+                  folded={foldedVideos.includes(v.id)}
+                  onToggleFold={() => toggleVideo(v.id)}
                 />
               ))}
             </ul>
@@ -298,7 +435,7 @@ export default function Clips() {
               </div>
             )
           )}
-        </section>
+        </CollapsibleSection>
       </div>
     </>
   )

@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router'
 import { PlanBadge } from '@/components/app/PlanBadge'
 import { PageHeader } from '@/components/layout/AppLayout'
 import { ActionButton } from '@/components/ui/ActionButton'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { Alert } from '@/components/ui/Field'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/cn'
@@ -25,6 +26,7 @@ export default function Billing() {
   const ent = useEntitlements(workspace.data?.id)
   const payments = usePayments(workspace.data?.id)
   const [notice, setNotice] = useState<Notice | null>(null)
+  const confirm = useConfirm()
   const verifiedRef = useRef<string | null>(null)
 
   const currency: Currency =
@@ -98,8 +100,15 @@ export default function Billing() {
                   variant="danger"
                   size="sm"
                   loading={cancel.isPending}
-                  onClick={() => {
-                    if (confirm('Cancel your plan? You’ll keep access until the current period ends.')) cancel.mutate()
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: 'Cancel your plan?',
+                      body: 'It won’t renew. You keep access and any remaining credits until the end of the current period.',
+                      confirmLabel: 'Cancel plan',
+                      cancelLabel: 'Keep plan',
+                      tone: 'danger',
+                    })
+                    if (ok) cancel.mutate()
                   }}
                 >
                   Cancel plan

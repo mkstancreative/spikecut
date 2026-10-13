@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { PageHeader } from '@/components/layout/AppLayout'
 import { ActionButton } from '@/components/ui/ActionButton'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { Alert } from '@/components/ui/Field'
 import { cn } from '@/lib/cn'
 import { socialMeta, useProviders, useSocialAccounts, useSocialActions, type SocialAccount } from '@/lib/social'
@@ -27,6 +28,7 @@ const providers = [
 
 function AccountRow({ account, onDisconnect, busy }: { account: SocialAccount; onDisconnect: () => void; busy: boolean }) {
   const meta = socialMeta[account.platform]
+  const confirm = useConfirm()
   return (
     <li className="flex items-center gap-3 rounded-xl bg-ink-850 p-3">
       {account.avatar_url ? (
@@ -51,7 +53,15 @@ function AccountRow({ account, onDisconnect, busy }: { account: SocialAccount; o
       <button
         type="button"
         disabled={busy}
-        onClick={() => confirm(`Disconnect ${account.display_name}? Scheduled posts to it will be removed.`) && onDisconnect()}
+        onClick={async () => {
+          const ok = await confirm({
+            title: `Disconnect ${account.display_name}?`,
+            body: 'Scheduled posts to this account are removed. You can reconnect it any time.',
+            confirmLabel: 'Disconnect',
+            tone: 'danger',
+          })
+          if (ok) onDisconnect()
+        }}
         title="Disconnect"
         className="rounded-lg p-2 text-ink-400 hover:bg-cut/10 hover:text-cut disabled:opacity-50"
       >
