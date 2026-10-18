@@ -1,11 +1,12 @@
 import { Eye, PlayCircle } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { formatDuration, platformMeta, timeAgo, type Creator, type Stream } from '@/lib/creators'
+import { formatDuration, getPlatformMeta, timeAgo, type Creator, type Stream } from '@/lib/creators'
 
 const kindLabel: Record<Stream['kind'], string> = { live: 'Live', vod: 'Past stream', upload: 'Video' }
 
 export function StreamCard({ stream, creator }: { stream: Stream; creator?: Creator }) {
   const live = stream.status === 'live'
+  const meta = getPlatformMeta(stream.platform)
   return (
     <a href={stream.url} target="_blank" rel="noreferrer" className="card group block overflow-hidden transition-colors hover:border-white/20">
       <div className="relative aspect-video bg-ink-850">
@@ -38,8 +39,8 @@ export function StreamCard({ stream, creator }: { stream: Stream; creator?: Crea
       <div className="p-3.5">
         <p className="line-clamp-2 text-sm font-medium">{stream.title ?? 'Untitled'}</p>
         <p className="mt-1.5 flex items-center gap-1.5 text-xs text-ink-500">
-          <span className={cn('size-1.5 rounded-full', platformMeta[stream.platform].dot)} />
-          {creator?.display_name ?? platformMeta[stream.platform].label} · {timeAgo(live ? stream.started_at : stream.published_at)}
+          <span className={cn('size-1.5 rounded-full', meta.dot)} />
+          {creator?.display_name ?? meta.label} · {timeAgo(live ? stream.started_at : stream.published_at)}
         </p>
       </div>
     </a>

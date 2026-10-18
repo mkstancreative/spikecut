@@ -7,11 +7,11 @@ import { ActionButton } from '@/components/ui/ActionButton'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { Alert, inputClasses } from '@/components/ui/Field'
 import { cn } from '@/lib/cn'
-import { platformMeta, timeAgo, useCreatorActions, useCreators, useStreams, type Creator } from '@/lib/creators'
+import { getPlatformMeta, timeAgo, useCreatorActions, useCreators, useStreams, type Creator } from '@/lib/creators'
 import { useEntitlements, useWorkspace } from '@/lib/workspace'
 
 function CreatorCard({ creator, onRemove, onRefresh, busy }: { creator: Creator; onRemove: () => void; onRefresh: () => void; busy: boolean }) {
-  const meta = platformMeta[creator.platform]
+  const meta = getPlatformMeta(creator.platform)
   const confirm = useConfirm()
   return (
     <li className="card flex items-center gap-4 p-4">

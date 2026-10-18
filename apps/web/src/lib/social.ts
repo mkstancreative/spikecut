@@ -43,6 +43,16 @@ export const socialMeta: Record<
   tiktok: { label: 'TikTok', dot: 'bg-cyan-400', text: 'text-cyan-300', provider: 'tiktok', maxSeconds: 10 * 60 },
 }
 
+export function getSocialMeta(platform: string) {
+  return socialMeta[platform as SocialPlatform] ?? {
+    label: platform || 'Unknown platform',
+    dot: 'bg-ink-500',
+    text: 'text-ink-400',
+    provider: 'meta' as const,
+    maxSeconds: 0,
+  }
+}
+
 // Explicit column list: token columns aren't readable from the browser at all.
 const ACCOUNT_COLUMNS = 'id, platform, display_name, handle, avatar_url, status, last_error, meta, created_at'
 

@@ -95,6 +95,12 @@ export const platformMeta: Record<Creator['platform'], { label: string; dot: str
   kick: { label: 'Kick', dot: 'bg-lime-400' },
 }
 
+// Database rows arrive at runtime, so an unexpected platform value must not
+// take down the page while looking up presentation data.
+export function getPlatformMeta(platform: string) {
+  return platformMeta[platform as Creator['platform']] ?? { label: platform || 'Unknown platform', dot: 'bg-ink-500' }
+}
+
 const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
 export function timeAgo(iso: string | null): string {
   if (!iso) return 'never'

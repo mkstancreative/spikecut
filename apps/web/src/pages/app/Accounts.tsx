@@ -6,7 +6,7 @@ import { ActionButton } from '@/components/ui/ActionButton'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { Alert } from '@/components/ui/Field'
 import { cn } from '@/lib/cn'
-import { socialMeta, useProviders, useSocialAccounts, useSocialActions, type SocialAccount } from '@/lib/social'
+import { getSocialMeta, useProviders, useSocialAccounts, useSocialActions, type SocialAccount } from '@/lib/social'
 import { useEntitlements, useWorkspace } from '@/lib/workspace'
 
 const providers = [
@@ -34,7 +34,7 @@ const providers = [
 ]
 
 function AccountRow({ account, onDisconnect, busy }: { account: SocialAccount; onDisconnect: () => void; busy: boolean }) {
-  const meta = socialMeta[account.platform]
+  const meta = getSocialMeta(account.platform)
   const confirm = useConfirm()
   return (
     <li className="flex items-center gap-3 rounded-xl bg-ink-850 p-3">
@@ -119,7 +119,7 @@ export default function Accounts() {
 
         <div className="grid gap-4 lg:grid-cols-2">
           {providers.map((p) => {
-            const mine = accounts.data?.filter((a) => socialMeta[a.platform].provider === p.id) ?? []
+            const mine = accounts.data?.filter((a) => getSocialMeta(a.platform).provider === p.id) ?? []
             const ready = available.data?.[p.id]
             return (
               <section key={p.id} className="card flex flex-col p-5">

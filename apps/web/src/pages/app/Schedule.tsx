@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { Alert } from '@/components/ui/Field'
 import { useClips, useMoments, useSignedUrl, type Clip } from '@/lib/clips'
 import { cn } from '@/lib/cn'
-import { socialMeta, usePublications, useSocialAccounts, useSocialActions, type Publication } from '@/lib/social'
+import { getSocialMeta, usePublications, useSocialAccounts, useSocialActions, type Publication } from '@/lib/social'
 import { useWorkspace } from '@/lib/workspace'
 
 const dayFmt = new Intl.DateTimeFormat('en', { weekday: 'long', day: 'numeric', month: 'short' })
@@ -52,7 +52,7 @@ function PostRow({
   onCancel: () => void
   onRetry: () => void
 }) {
-  const meta = socialMeta[pub.platform]
+  const meta = getSocialMeta(pub.platform)
   return (
     <li className="flex items-center gap-3 rounded-xl bg-ink-850 p-3">
       <Thumb clip={clip} />

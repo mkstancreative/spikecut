@@ -6,7 +6,7 @@ import { Alert, inputClasses } from '@/components/ui/Field'
 import { cn } from '@/lib/cn'
 import { formatDuration } from '@/lib/creators'
 import {
-  socialMeta,
+  getSocialMeta,
   suggestTime,
   tiktokPrivacyOptions,
   toLocalInput,
@@ -18,7 +18,7 @@ import {
 } from '@/lib/social'
 
 // Longer than a platform accepts (e.g. a whole-video animation on Reels) → can't be ticked.
-const exceedsLimit = (platform: SocialPlatform, seconds?: number) => !!seconds && seconds > socialMeta[platform].maxSeconds
+const exceedsLimit = (platform: SocialPlatform, seconds?: number) => !!seconds && seconds > getSocialMeta(platform).maxSeconds
 
 type Props = { clipId: string; defaultTitle: string; workspaceId: string; durationSeconds?: number; onClose: () => void }
 
@@ -94,7 +94,7 @@ export function ScheduleDialog({ clipId, defaultTitle, workspaceId, durationSeco
                       'flex cursor-pointer items-center gap-3 rounded-xl bg-ink-850 p-2.5 has-checked:ring-1 has-checked:ring-spike/50',
                       tooLong(a.platform) && 'cursor-not-allowed opacity-50',
                     )}
-                    title={tooLong(a.platform) ? `${socialMeta[a.platform].label} takes videos up to ${formatDuration(socialMeta[a.platform].maxSeconds)}` : undefined}
+                    title={tooLong(a.platform) ? `${getSocialMeta(a.platform).label} takes videos up to ${formatDuration(getSocialMeta(a.platform).maxSeconds)}` : undefined}
                   >
                     <input
                       type="checkbox"
@@ -108,10 +108,10 @@ export function ScheduleDialog({ clipId, defaultTitle, workspaceId, durationSeco
                         setSelected(next)
                       }}
                     />
-                    <span className={cn('size-2 rounded-full', socialMeta[a.platform].dot)} />
+                    <span className={cn('size-2 rounded-full', getSocialMeta(a.platform).dot)} />
                     <span className="min-w-0 flex-1 truncate text-sm">{a.display_name}</span>
                     <span className="text-xs text-ink-500">
-                      {socialMeta[a.platform].label}
+                      {getSocialMeta(a.platform).label}
                       {tooLong(a.platform) && ' · too long'}
                     </span>
                   </label>
