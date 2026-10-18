@@ -148,6 +148,7 @@ export function useClipActions() {
   }
   return {
     analyze: useMutation({ mutationFn: (streamId: string) => api(`/streams/${streamId}/analyze`, { method: 'POST' }), onSuccess: refresh }),
+    stopAnalyze: useMutation({ mutationFn: (streamId: string) => api(`/streams/${streamId}/analyze/stop`, { method: 'POST' }), onSuccess: refresh }),
     render: useMutation({ mutationFn: (momentId: string) => api(`/moments/${momentId}/render`, { method: 'POST' }), onSuccess: refresh }),
     deleteClip: useMutation({ mutationFn: (clipId: string) => api(`/clips/${clipId}`, { method: 'DELETE' }), onSuccess: refresh }),
     dismissMoment: useMutation({ mutationFn: (momentId: string) => api(`/moments/${momentId}`, { method: 'DELETE' }), onSuccess: refresh }),

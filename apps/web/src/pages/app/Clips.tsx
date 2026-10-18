@@ -1,4 +1,4 @@
-import { Film, LoaderCircle, Sparkles, Trash2, Wand2, X } from 'lucide-react'
+import { Film, LoaderCircle, Sparkles, Square, Trash2, Wand2, X } from 'lucide-react'
 import { useId, useState } from 'react'
 import { ClipPlayer, JobProgress } from '@/components/app/ClipCard'
 import { ScheduleDialog } from '@/components/app/ScheduleDialog'
@@ -102,6 +102,8 @@ function VideoRow({
   creatorName,
   moments,
   onAnalyze,
+  onStop,
+  stopping,
   analyzing,
   onRender,
   renderingId,
@@ -117,6 +119,8 @@ function VideoRow({
   creatorName?: string
   moments: Moment[]
   onAnalyze: () => void
+  onStop: () => void
+  stopping: boolean
   analyzing: boolean
   onRender: (id: string) => void
   renderingId?: string
@@ -161,7 +165,11 @@ function VideoRow({
             </p>
           )}
         </div>
-        {!busy && (
+        {busy ? (
+          <ActionButton size="sm" variant="secondary" onClick={onStop} loading={stopping} className="shrink-0 text-cut">
+            <Square className="size-3" /> Stop
+          </ActionButton>
+        ) : (
           <ActionButton
             size="sm"
             variant={video.analysis_status === 'done' ? 'secondary' : 'primary'}
@@ -237,7 +245,7 @@ export default function Clips() {
   const [foldedVideos, setFoldedVideos] = usePersistentState<string[]>('spikecut:scan:folded', [])
   const toggleVideo = (id: string) =>
     setFoldedVideos((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
-  const { analyze, render, deleteClip, dismissMoment, clearMoments } = useClipActions()
+  const { analyze, stopAnalyze, render, deleteClip, dismissMoment, clearMoments } = useClipActions()
 
   const creatorName = new Map(creators.data?.map((c) => [c.id, c.display_name]))
   const momentById = new Map(moments.data?.map((m) => [m.id, m]))
@@ -246,7 +254,7 @@ export default function Clips() {
   const outOfCredits = (ent.data?.credits ?? 0) < 1
   const videosWithMoments = (videos.data ?? []).filter((v) => momentsByVideo.has(v.id)).map((v) => v.id)
   const allFolded = videosWithMoments.length > 0 && videosWithMoments.every((id) => foldedVideos.includes(id))
-  const error = (analyze.error ?? render.error ?? deleteClip.error ?? dismissMoment.error ?? clearMoments.error) as Error | null
+  const error = (analyze.error ?? stopAnalyze.error ?? render.error ?? deleteClip.error ?? dismissMoment.error ?? clearMoments.error) as Error | null
 
   return (
     <>
@@ -317,6 +325,8 @@ export default function Clips() {
                   creatorName={creatorName.get(v.creator_id)}
                   moments={momentsByVideo.get(v.id) ?? []}
                   onAnalyze={() => analyze.mutate(v.id)}
+                  onStop={() => stopAnalyze.mutate(v.id)}
+                  stopping={stopAnalyze.isPending && stopAnalyze.variables === v.id}
                   analyzing={analyze.isPending && analyze.variables === v.id}
                   onRender={(id) => render.mutate(id)}
                   renderingId={render.isPending ? render.variables : undefined}

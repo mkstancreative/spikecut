@@ -75,7 +75,7 @@ function fit(ix: VideoIndex, first: number, last: number): [number, number] | nu
 
 export async function pickWithClaude(
   ix: VideoIndex,
-  opts: { max: number; title?: string; focusFrom?: number },
+  opts: { max: number; title?: string; focusFrom?: number; signal?: AbortSignal },
 ): Promise<AiPick[] | null> {
   if (!aiEnabled() || !ix.sents.length) return null
 
@@ -103,7 +103,7 @@ export async function pickWithClaude(
     output_config: { format: betaZodOutputFormat(Picks) },
     // If a safety classifier declines (e.g. a heated debate misread), retry on a fallback model in the same call.
     ...(defaultModel ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const } : {}),
-  })
+  }, { signal: opts.signal })
   if (res.stop_reason === 'refusal') throw new Error(`Claude declined (${res.stop_details?.category ?? 'unknown'})`)
   if (res.stop_reason === 'max_tokens') throw new Error('Claude response was cut off')
   const clips = res.parsed_output?.clips

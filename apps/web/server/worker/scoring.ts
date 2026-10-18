@@ -229,7 +229,7 @@ export async function findMoments(
   transcript: Transcript,
   db: number[],
   duration: number,
-  opts: { scale?: 'relative' | 'absolute'; maxMoments?: number; title?: string; focusFrom?: number } = {},
+  opts: { scale?: 'relative' | 'absolute'; maxMoments?: number; title?: string; focusFrom?: number; signal?: AbortSignal } = {},
 ): Promise<DetectedMoment[]> {
   if (transcript.words.length < 20 || duration < MIN_LEN + 5) return []
   const ix = buildIndex(transcript, db, duration)
@@ -244,7 +244,8 @@ export async function findMoments(
   const heuristicScore = (raw: number) =>
     opts.scale === 'absolute' ? absoluteScore(raw) : clamp(50 + (49 * (raw - lo)) / Math.max(0.001, hi - lo))
 
-  const picks = await pickWithClaude(ix, { max, title: opts.title, focusFrom: opts.focusFrom }).catch((e) => {
+  const picks = await pickWithClaude(ix, { max, title: opts.title, focusFrom: opts.focusFrom, signal: opts.signal }).catch((e) => {
+    if (opts.signal?.aborted) throw e
     console.error('[scoring] Claude pick failed, using heuristic:', (e as Error).message)
     return null
   })

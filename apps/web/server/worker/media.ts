@@ -23,7 +23,7 @@ export type ProgressFn = (pct: number, detail?: string) => void
  * yt-dlp downloads video and audio as separate files and reports each 0→100%,
  * so we fold them into one overall percentage.
  */
-export async function downloadSource(url: string, streamId: string, onProgress?: ProgressFn) {
+export async function downloadSource(url: string, streamId: string, onProgress?: ProgressFn, signal?: AbortSignal) {
   const out = await sourcePath(streamId)
   if (existsSync(out)) return out
   let parts = 1
@@ -54,6 +54,7 @@ export async function downloadSource(url: string, streamId: string, onProgress?:
           onProgress?.(Math.min(100, overall), `${speed}${eta}`)
         }
       },
+      signal,
     },
   ).catch(async (e) => {
     await rm(out, { force: true })
@@ -102,9 +103,9 @@ export async function probeTitle(url: string): Promise<string | null> {
 }
 
 /** 16 kHz mono WAV — what whisper.cpp wants, and easy to measure loudness from. */
-export async function extractAudio(video: string, outDir: string) {
+export async function extractAudio(video: string, outDir: string, signal?: AbortSignal) {
   const wav = join(outDir, 'audio.wav')
-  await run(tools.ffmpeg, ['-y', '-v', 'error', '-i', video, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav])
+  await run(tools.ffmpeg, ['-y', '-v', 'error', '-i', video, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav], { signal })
   return wav
 }
 
@@ -135,7 +136,7 @@ const EVENT_KINDS: [RegExp, AudioEvent['kind']][] = [
 ]
 
 /** Word-level transcript via whisper.cpp (one word per segment). */
-export async function transcribe(wav: string, outDir: string, onProgress?: (pct: number) => void): Promise<Transcript> {
+export async function transcribe(wav: string, outDir: string, onProgress?: (pct: number) => void, signal?: AbortSignal): Promise<Transcript> {
   const base = join(outDir, 'transcript')
   const vad = existsSync(tools.vadModel) ? ['--vad', '-vm', tools.vadModel] : []
   await run(
@@ -153,6 +154,7 @@ export async function transcribe(wav: string, outDir: string, onProgress?: (pct:
         const m = line.match(/progress\s*=\s*(\d+)%/)
         if (m) onProgress?.(Number(m[1]))
       },
+      signal,
     },
   )
   const json = JSON.parse(await readFile(`${base}.json`, 'utf8')) as {

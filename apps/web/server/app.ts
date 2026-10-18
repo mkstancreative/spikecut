@@ -215,6 +215,41 @@ app.post('/streams/:id/analyze', async (c) => {
   return c.json({ ok: true })
 })
 
+app.post('/streams/:id/analyze/stop', async (c) => {
+  const user = await requireUser(c)
+  const db = supabaseAdmin()
+  const { data: stream, error: streamErr } = await db
+    .from('streams')
+    .select('id, workspace_id')
+    .eq('id', c.req.param('id'))
+    .maybeSingle()
+  if (streamErr) throw streamErr
+  if (!stream) throw new BillingError('Video not found', 404)
+  await requireMember(user.id, stream.workspace_id)
+
+  const { data: jobs, error: jobsErr } = await db
+    .from('jobs')
+    .select('id')
+    .eq('workspace_id', stream.workspace_id)
+    .eq('type', 'analyze')
+    .contains('payload', { streamId: stream.id })
+    .in('status', ['queued', 'running'])
+  if (jobsErr) throw jobsErr
+  if (!jobs?.length) throw new BillingError('Moment finding is no longer running', 409)
+
+  const { data: cancelled, error } = await db
+    .from('jobs')
+    .update({ status: 'failed', message: 'Stopped by user', finished_at: new Date().toISOString() })
+    .in('id', jobs.map((job) => job.id))
+    .in('status', ['queued', 'running'])
+    .select('id')
+
+  if (error) throw error
+  if (!cancelled?.length) throw new BillingError('Moment finding is no longer running', 409)
+  await db.from('streams').update({ analysis_status: 'none', analysis_message: 'Stopped' }).eq('id', stream.id)
+  return c.json({ ok: true })
+})
+
 app.post('/moments/:id/render', async (c) => {
   const user = await requireUser(c)
   const db = supabaseAdmin()

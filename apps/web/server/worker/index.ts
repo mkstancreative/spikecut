@@ -29,7 +29,14 @@ async function progress(jobId: string, pct: number, message: string, force = fal
   // Throttle DB writes; the UI polls every few seconds anyway.
   if (!force && Date.now() - lastProgressAt < 1000) return
   lastProgressAt = Date.now()
-  await db.from('jobs').update({ progress: Math.round(pct), message }).eq('id', jobId)
+  await db.from('jobs').update({ progress: Math.round(pct), message }).eq('id', jobId).eq('status', 'running')
+}
+
+class JobCancelled extends Error {}
+
+async function ensureJobRunning(jobId: string) {
+  const { data } = await db.from('jobs').select('status').eq('id', jobId).maybeSingle()
+  if (data?.status !== 'running') throw new JobCancelled('Stopped by user')
 }
 
 async function setStream(streamId: string, analysis_status: string, analysis_message: string, extra: object = {}) {
@@ -38,7 +45,7 @@ async function setStream(streamId: string, analysis_status: string, analysis_mes
 
 // ── Analyze
 
-async function analyze(job: Job) {
+async function analyze(job: Job, signal: AbortSignal) {
   const streamId = job.payload.streamId
   const { data: stream } = await db.from('streams').select('id, url, title, duration_seconds').eq('id', streamId).single()
   if (!stream) throw new Error('Video no longer exists')
@@ -47,6 +54,7 @@ async function analyze(job: Job) {
   await mkdir(work, { recursive: true })
   try {
     const step = async (pct: number, message: string) => {
+      await ensureJobRunning(job.id)
       await progress(job.id, pct, message, true)
       await setStream(streamId, 'running', message)
     }
@@ -57,22 +65,25 @@ async function analyze(job: Job) {
       const message = `Downloading video · ${Math.round(p)}%${detail}`
       progress(job.id, 1 + p * 0.29, message)
       setStream(streamId, 'running', message)
-    })
+    }, signal)
+    await ensureJobRunning(job.id)
     const duration = await probeDuration(source)
     if (duration > MAX_SOURCE_SECONDS) throw new Error(`Video is longer than ${Math.round(MAX_SOURCE_SECONDS / 3600)}h`)
 
     await step(30, 'Extracting audio · 100% downloaded')
-    const wav = await extractAudio(source, work)
+    const wav = await extractAudio(source, work, signal)
 
     await step(35, 'Transcribing speech · 0%')
     const transcript = await transcribe(wav, work, (p) => {
       const pct = 35 + p * 0.5 // whisper reports 0–100
       progress(job.id, pct, `Transcribing speech · ${p}%`)
       setStream(streamId, 'running', `Transcribing speech · ${p}%`)
-    })
+    }, signal)
+    await ensureJobRunning(job.id)
 
     await step(88, 'Finding the best moments')
-    const moments = await findMoments(transcript, await loudness(wav), duration, { title: stream.title ?? undefined })
+    const moments = await findMoments(transcript, await loudness(wav), duration, { title: stream.title ?? undefined, signal })
+    await ensureJobRunning(job.id)
 
     // Replace previous un-rendered detections; keep anything already turned into a clip.
     await db.from('moments').delete().eq('stream_id', streamId).in('status', ['detected', 'failed'])
@@ -202,6 +213,10 @@ async function render(job: Job) {
 // ── Loop
 
 async function fail(job: Job, e: unknown) {
+  if (e instanceof JobCancelled) {
+    if (job.type === 'analyze') await setStream(job.payload.streamId, 'none', 'Stopped')
+    return
+  }
   const message = (e as Error).message?.slice(0, 500) ?? String(e)
   console.error(`[worker] ${job.type} ${job.id} failed:`, message)
   await db.from('jobs').update({ status: 'failed', message, finished_at: new Date().toISOString() }).eq('id', job.id)
@@ -220,15 +235,30 @@ async function runOne(): Promise<boolean> {
   if (!job) return false
 
   const started = Date.now()
+  const controller = new AbortController()
+  const watchCancel = job.type === 'analyze'
+    ? setInterval(() => {
+        void (async () => {
+          try {
+            const { data, error } = await db.from('jobs').select('status').eq('id', job.id).maybeSingle()
+            if (!error && data?.status !== 'running') controller.abort()
+          } catch (e) {
+            console.error('[worker] cancellation check failed:', e)
+          }
+        })()
+      }, 1000)
+    : undefined
   console.log(`[worker] ${job.type} ${job.id} started`)
   try {
-    if (job.type === 'analyze') await analyze(job)
+    if (job.type === 'analyze') await analyze(job, controller.signal)
     else if (job.type === 'cartoonify') await cartoonify(job as unknown as CartoonJob, progress)
     else await render(job)
-    await db.from('jobs').update({ status: 'done', progress: 100, finished_at: new Date().toISOString() }).eq('id', job.id)
+    await db.from('jobs').update({ status: 'done', progress: 100, finished_at: new Date().toISOString() }).eq('id', job.id).eq('status', 'running')
     console.log(`[worker] ${job.type} ${job.id} done in ${Math.round((Date.now() - started) / 1000)}s`)
   } catch (e) {
-    await fail(job, e)
+    await fail(job, controller.signal.aborted ? new JobCancelled('Stopped by user') : e)
+  } finally {
+    if (watchCancel) clearInterval(watchCancel)
   }
   return true
 }
