@@ -15,6 +15,7 @@ import { Pricing } from '@/components/sections/Pricing'
 import { AuthProvider } from '@/lib/auth'
 import Accounts from '@/pages/app/Accounts'
 import Billing from '@/pages/app/Billing'
+import Animate from '@/pages/app/Animate'
 import Clips from '@/pages/app/Clips'
 import Creators from '@/pages/app/Creators'
 import Live from '@/pages/app/Live'
@@ -101,6 +102,7 @@ const router = createBrowserRouter([
               { path: 'creators', element: <Creators /> },
               { path: 'live', element: <Live /> },
               { path: 'clips', element: <Clips /> },
+              { path: 'animate', element: <Animate /> },
               { path: 'schedule', element: <Schedule /> },
               { path: 'accounts', element: <Accounts /> },
               ...upcoming.map(({ path, ...props }) => ({ path, element: <Upcoming {...props} /> })),

@@ -21,6 +21,8 @@ export const tools = {
   python: process.env.PYTHON_BIN?.trim() || join(repoRoot, 'workers/py/.venv/bin/python'),
   pyDir: join(repoRoot, 'workers/py'),
   faceModel: process.env.FACE_MODEL?.trim() || join(repoRoot, '.models/face_detection_yunet_2023mar.onnx'),
+  // Animate "Light filter": DCT-Net 3D converted to ONNX by workers/py/setup_light_filter.sh.
+  lightFilterModels: process.env.LIGHT_FILTER_MODELS?.trim() || join(repoRoot, '.models/dctnet/3d'),
   captionFont:
     process.env.CAPTION_FONT?.trim() ||
     firstExisting(

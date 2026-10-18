@@ -1,7 +1,11 @@
-import { existsSync } from 'node:fs'
-import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises'
+import { createWriteStream, existsSync } from 'node:fs'
+import { mkdir, readdir, readFile, rename, rm, stat } from 'node:fs/promises'
 import { availableParallelism } from 'node:os'
-import { join } from 'node:path'
+import { extname, join } from 'node:path'
+import { Readable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
+import type { ReadableStream as NodeReadableStream } from 'node:stream/web'
+import { supabaseAdmin } from '../supabase'
 import { mediaDir, SOURCE_TTL_MS, tools, ytdlpAuthArgs } from './config'
 import { run } from './exec'
 
@@ -59,6 +63,44 @@ export async function downloadSource(url: string, streamId: string, onProgress?:
   return out
 }
 
+/** Fetch (or reuse) a video the user uploaded to the uploads bucket, streamed to disk so big files are fine. */
+export async function fetchUpload(storagePath: string, streamId: string, onProgress?: ProgressFn) {
+  await mkdir(mediaDir, { recursive: true })
+  const out = join(mediaDir, `upload-${streamId}${extname(storagePath) || '.mp4'}`)
+  if (existsSync(out)) return out
+  const { data, error } = await supabaseAdmin().storage.from('uploads').createSignedUrl(storagePath, 60 * 60)
+  if (error) throw new Error(`Upload is missing: ${error.message}`)
+  const res = await fetch(data.signedUrl)
+  if (!res.ok || !res.body) throw new Error(`Couldn’t read the upload (${res.status})`)
+
+  const total = Number(res.headers.get('content-length')) || 0
+  let got = 0
+  const counter = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, ctl) {
+      got += chunk.byteLength
+      if (total) onProgress?.((got / total) * 100, ` · ${(got / 1e6).toFixed(0)} of ${(total / 1e6).toFixed(0)} MB`)
+      ctl.enqueue(chunk)
+    },
+  })
+  const partial = `${out}.part`
+  try {
+    await pipeline(Readable.fromWeb(res.body.pipeThrough(counter) as NodeReadableStream), createWriteStream(partial))
+    await rename(partial, out)
+  } catch (e) {
+    await rm(partial, { force: true })
+    throw e
+  }
+  onProgress?.(100)
+  return out
+}
+
+/** A post's title (or caption) without downloading it — also fails fast on private or removed posts. */
+export async function probeTitle(url: string): Promise<string | null> {
+  const out = await run(tools.ytdlp, [...ytdlpAuthArgs(), '--no-playlist', '--no-warnings', '--skip-download', '--print', '%(title)s', url])
+  const title = out.trim().split('\n')[0]?.trim()
+  return title && title !== 'NA' ? title.slice(0, 200) : null
+}
+
 /** 16 kHz mono WAV — what whisper.cpp wants, and easy to measure loudness from. */
 export async function extractAudio(video: string, outDir: string) {
   const wav = join(outDir, 'audio.wav')
@@ -69,6 +111,17 @@ export async function extractAudio(video: string, outDir: string) {
 export async function probeDuration(file: string): Promise<number> {
   const out = await run(tools.ffprobe, ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file])
   return Number(out.trim())
+}
+
+export async function probeSize(file: string): Promise<{ width: number; height: number }> {
+  // Rotation metadata (phone videos) swaps the displayed width and height.
+  const out = await run(tools.ffprobe, [
+    '-v', 'error', '-select_streams', 'v:0',
+    '-show_entries', 'stream=width,height:stream_side_data=rotation', '-of', 'json', file,
+  ])
+  const s = (JSON.parse(out) as { streams: { width: number; height: number; side_data_list?: { rotation?: number }[] }[] }).streams[0]
+  const rotated = Math.abs(s.side_data_list?.find((d) => d.rotation != null)?.rotation ?? 0) % 180 === 90
+  return rotated ? { width: s.height, height: s.width } : { width: s.width, height: s.height }
 }
 
 /** Non-speech moments whisper tags, e.g. "(laughing)" or "[applause]" — strong clip signals. */

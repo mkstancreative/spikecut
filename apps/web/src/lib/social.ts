@@ -30,11 +30,17 @@ export type Publication = {
   published_at: string | null
 }
 
-export const socialMeta: Record<SocialPlatform, { label: string; dot: string; text: string; provider: 'google' | 'meta' | null }> = {
-  youtube: { label: 'YouTube Shorts', dot: 'bg-red-500', text: 'text-red-300', provider: 'google' },
-  instagram: { label: 'Instagram Reels', dot: 'bg-pink-500', text: 'text-pink-300', provider: 'meta' },
-  facebook: { label: 'Facebook Page', dot: 'bg-blue-500', text: 'text-blue-300', provider: 'meta' },
-  tiktok: { label: 'TikTok', dot: 'bg-ink-400', text: 'text-ink-300', provider: null },
+export type SocialProvider = 'google' | 'meta' | 'tiktok'
+
+export const socialMeta: Record<
+  SocialPlatform,
+  { label: string; dot: string; text: string; provider: SocialProvider; maxSeconds: number }
+> = {
+  // maxSeconds: longest video each platform takes through its API (YouTube posts longer ones as regular videos).
+  youtube: { label: 'YouTube Shorts', dot: 'bg-red-500', text: 'text-red-300', provider: 'google', maxSeconds: 12 * 3600 },
+  instagram: { label: 'Instagram Reels', dot: 'bg-pink-500', text: 'text-pink-300', provider: 'meta', maxSeconds: 15 * 60 },
+  facebook: { label: 'Facebook Page', dot: 'bg-blue-500', text: 'text-blue-300', provider: 'meta', maxSeconds: 4 * 3600 },
+  tiktok: { label: 'TikTok', dot: 'bg-cyan-400', text: 'text-cyan-300', provider: 'tiktok', maxSeconds: 10 * 60 },
 }
 
 // Explicit column list: token columns aren't readable from the browser at all.
@@ -60,7 +66,7 @@ export function useProviders() {
   return useQuery({
     queryKey: ['providers'],
     staleTime: 5 * 60 * 1000,
-    queryFn: () => api<{ google: boolean; meta: boolean }>('/accounts/providers'),
+    queryFn: () => api<Record<SocialProvider, boolean>>('/accounts/providers'),
   })
 }
 
@@ -91,7 +97,7 @@ export function useSocialActions(workspaceId: string | undefined) {
   }
   return {
     connect: useMutation({
-      mutationFn: (provider: 'google' | 'meta') => api<{ url: string }>('/accounts/connect', { body: { workspaceId, provider } }),
+      mutationFn: (provider: SocialProvider) => api<{ url: string }>('/accounts/connect', { body: { workspaceId, provider } }),
       onSuccess: ({ url }) => window.location.assign(url),
     }),
     disconnect: useMutation({
@@ -99,7 +105,14 @@ export function useSocialActions(workspaceId: string | undefined) {
       onSuccess: refresh,
     }),
     schedule: useMutation({
-      mutationFn: (body: { clipId: string; accountIds: string[]; title: string; caption: string; scheduledAt: string }) =>
+      mutationFn: (body: {
+        clipId: string
+        accountIds: string[]
+        title: string
+        caption: string
+        scheduledAt: string
+        tiktokPrivacy?: TikTokPrivacy
+      }) =>
         api<{ count: number }>('/publications', { body }),
       onSuccess: refresh,
     }),
@@ -107,6 +120,15 @@ export function useSocialActions(workspaceId: string | undefined) {
     retry: useMutation({ mutationFn: (id: string) => api(`/publications/${id}/retry`, { method: 'POST' }), onSuccess: refresh }),
   }
 }
+
+export type TikTokPrivacy = 'PUBLIC_TO_EVERYONE' | 'MUTUAL_FOLLOW_FRIENDS' | 'FOLLOWER_OF_CREATOR' | 'SELF_ONLY'
+
+export const tiktokPrivacyOptions: { value: TikTokPrivacy; label: string }[] = [
+  { value: 'PUBLIC_TO_EVERYONE', label: 'Everyone' },
+  { value: 'FOLLOWER_OF_CREATOR', label: 'Followers' },
+  { value: 'MUTUAL_FOLLOW_FRIENDS', label: 'Friends' },
+  { value: 'SELF_ONLY', label: 'Only me' },
+]
 
 // Posting windows that tend to perform well for short-form video (local time).
 const SLOTS: [number, number][] = [

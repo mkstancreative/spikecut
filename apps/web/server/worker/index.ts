@@ -2,20 +2,23 @@
  * Clip worker: claims jobs from the Postgres queue and runs them one at a time.
  *   analyze → download source, transcribe, score moments
  *   render  → cut, reframe 9:16, caption, upload to Storage
+ *   cartoonify → restyle an uploaded video as a cartoon (local Light filter or fal.ai), upload to Storage
  * Runs locally via `npm run dev`; in production it moves to the worker host.
  */
 import { mkdir, readFile, rm } from 'node:fs/promises'
 import { hostname } from 'node:os'
 import { join } from 'node:path'
+import { refundCredits } from '../clips'
 import { pickSegments, readSegments, segmentsToVideo, sessionDir } from '../live/segments'
 import { supabaseAdmin } from '../supabase'
 import { mediaDir, MAX_SOURCE_SECONDS, tools } from './config'
 import { cleanupSources, downloadSource, extractAudio, loudness, probeDuration, transcribe } from './media'
+import { cartoonify, failCartoon, type CartoonJob } from './cartoon'
 import { publishDue } from './publisher'
 import { renderClip } from './render'
 import { findMoments } from './scoring'
 
-type Job = { id: string; workspace_id: string; type: 'analyze' | 'render'; payload: Record<string, string>; attempts: number }
+type Job = { id: string; workspace_id: string; type: 'analyze' | 'render' | 'cartoonify'; payload: Record<string, string>; attempts: number }
 
 const WORKER_ID = `${hostname()}-${process.pid}`
 const IDLE_MS = 3000
@@ -103,21 +106,8 @@ async function analyze(job: Job) {
 
 // ── Render
 
-async function refund(job: Job) {
-  // Credits are reserved when the render is queued (ref render:<jobId>); give it back on failure.
-  const { data: grants } = await db
-    .from('credit_grants')
-    .select('expires_at')
-    .eq('workspace_id', job.workspace_id)
-    .gt('expires_at', new Date().toISOString())
-    .order('expires_at', { ascending: false })
-    .limit(1)
-  const expires = grants?.[0]?.expires_at ?? new Date(Date.now() + 24 * 3600 * 1000).toISOString()
-  await db.from('credit_grants').upsert(
-    { workspace_id: job.workspace_id, source: 'refund', source_ref: `refund:render:${job.id}`, amount: 1, remaining: 1, expires_at: expires },
-    { onConflict: 'source_ref', ignoreDuplicates: true },
-  )
-}
+// Credits are reserved when the render is queued (ref render:<jobId>); give it back on failure.
+const refund = (job: Job) => refundCredits(job.workspace_id, 1, `refund:render:${job.id}`)
 
 async function render(job: Job) {
   const momentId = job.payload.momentId
@@ -220,6 +210,7 @@ async function fail(job: Job, e: unknown) {
     await db.from('moments').update({ status: 'failed' }).eq('id', job.payload.momentId)
     await refund(job)
   }
+  if (job.type === 'cartoonify') await failCartoon(job as unknown as CartoonJob, message)
 }
 
 async function runOne(): Promise<boolean> {
@@ -232,6 +223,7 @@ async function runOne(): Promise<boolean> {
   console.log(`[worker] ${job.type} ${job.id} started`)
   try {
     if (job.type === 'analyze') await analyze(job)
+    else if (job.type === 'cartoonify') await cartoonify(job as unknown as CartoonJob, progress)
     else await render(job)
     await db.from('jobs').update({ status: 'done', progress: 100, finished_at: new Date().toISOString() }).eq('id', job.id)
     console.log(`[worker] ${job.type} ${job.id} done in ${Math.round((Date.now() - started) / 1000)}s`)

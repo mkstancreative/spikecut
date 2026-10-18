@@ -10,6 +10,7 @@ type Due = {
   social_account_id: string
   title: string | null
   caption: string | null
+  options: Record<string, unknown> | null
   attempts: number
 }
 
@@ -38,7 +39,12 @@ export async function publishDue(): Promise<number> {
       if (signErr) throw signErr
 
       console.log(`[publisher] posting to ${acc.platform} · ${acc.display_name}`)
-      const result = await publishTo(acc, { videoUrl: signed.signedUrl, title: p.title ?? '', caption: p.caption ?? '' })
+      const result = await publishTo(acc, {
+        videoUrl: signed.signedUrl,
+        title: p.title ?? '',
+        caption: p.caption ?? '',
+        options: p.options ?? {},
+      })
       await db
         .from('publications')
         .update({

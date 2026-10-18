@@ -125,6 +125,16 @@ console.log('\nPublishing')
   else fail('TOKEN_ENCRYPTION_KEY missing')
   p.google ? ok('YouTube posting (Google OAuth client) configured') : console.log('  • YouTube posting not configured (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET empty)')
   p.meta ? ok('Instagram/Facebook posting (Meta app) configured') : console.log('  • Instagram/Facebook posting not configured (META_APP_ID / META_APP_SECRET empty)')
+  p.tiktok ? ok('TikTok posting (TikTok app) configured') : console.log('  • TikTok posting not configured (TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET empty)')
+}
+
+console.log('\nAnimate')
+{
+  const models = tools.lightFilterModels
+  if (existsSync(`${models}/cartoon_bg.onnx`) && existsSync(`${models}/cartoon_h.onnx`)) ok('Light filter models installed')
+  else console.log('  • Light filter models missing — run: bash workers/py/setup_light_filter.sh')
+  if (process.env.FAL_KEY?.trim()) ok('AI cartoon styles (fal.ai) configured')
+  else console.log('  • AI cartoon styles off (FAL_KEY empty) — only the Light filter is offered')
 }
 
 console.log(failures ? `\n${failures} problem(s) found.` : '\nAll good.')

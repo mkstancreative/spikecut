@@ -1,4 +1,5 @@
 // AES-256-GCM token encryption + HMAC-signed OAuth state. WebCrypto only, so it runs on Node and Vercel edge.
+import type { SocialProvider } from './types'
 
 const enc = new TextEncoder()
 const dec = new TextDecoder()
@@ -46,7 +47,7 @@ async function hmac(data: string) {
   return b64url(b64(await crypto.subtle.sign('HMAC', key, enc.encode(`oauth-state:${data}`))))
 }
 
-export type OAuthState = { workspaceId: string; userId: string; provider: 'google' | 'meta'; exp: number; nonce: string }
+export type OAuthState = { workspaceId: string; userId: string; provider: SocialProvider; exp: number; nonce: string }
 
 /** Signed, expiring state so the OAuth callback knows who started the flow and can't be forged. */
 export async function signState(s: Omit<OAuthState, 'exp' | 'nonce'>): Promise<string> {

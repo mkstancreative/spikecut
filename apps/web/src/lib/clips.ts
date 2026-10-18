@@ -16,7 +16,7 @@ export type Moment = {
   score: number
   title: string | null
   transcript: string | null
-  signals: { hooks?: string[]; loudness?: number; pace?: number; ai?: { score: number; why: string } }
+  signals: { hooks?: string[]; loudness?: number; pace?: number; ai?: { score: number; why: string }; whole?: boolean }
   status: 'detected' | 'queued' | 'rendering' | 'rendered' | 'failed'
 }
 
@@ -27,6 +27,10 @@ export type Clip = {
   video_path: string | null
   thumbnail_path: string | null
   duration_seconds: number | null
+  width: number | null
+  height: number | null
+  style: 'standard' | 'animated' | 'cartoon'
+  preset: string | null
   status: 'rendering' | 'ready' | 'failed'
   error: string | null
   created_at: string
@@ -80,6 +84,7 @@ export function useVideos(workspaceId: string | undefined) {
         .select('*')
         .eq('workspace_id', workspaceId!)
         .in('status', ['available', 'ended'])
+        .neq('kind', 'upload') // the user's own uploads live on the Animate page
         .or('duration_seconds.is.null,duration_seconds.gte.60')
         .order('published_at', { ascending: false })
         .limit(40)
@@ -106,17 +111,16 @@ export function useMoments(workspaceId: string | undefined) {
   })
 }
 
-export function useClips(workspaceId: string | undefined) {
+/** All clips, or only one style (Clips shows standard renders, Animate shows animated ones). */
+export function useClips(workspaceId: string | undefined, style?: Clip['style']) {
   return useQuery({
-    queryKey: ['clips', workspaceId],
+    queryKey: ['clips', workspaceId, style],
     enabled: !!workspaceId,
     refetchInterval: (q) => (q.state.data?.some((c) => c.status === 'rendering') ? 3000 : 15_000),
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('clips')
-        .select('*')
-        .eq('workspace_id', workspaceId!)
-        .order('created_at', { ascending: false })
+      let query = supabase.from('clips').select('*').eq('workspace_id', workspaceId!)
+      if (style) query = query.eq('style', style)
+      const { data, error } = await query.order('created_at', { ascending: false })
       if (error) throw error
       return data as Clip[]
     },

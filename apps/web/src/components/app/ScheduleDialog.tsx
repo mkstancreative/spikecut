@@ -4,17 +4,33 @@ import { Link } from 'react-router'
 import { ActionButton } from '@/components/ui/ActionButton'
 import { Alert, inputClasses } from '@/components/ui/Field'
 import { cn } from '@/lib/cn'
-import { socialMeta, suggestTime, toLocalInput, usePublications, useSocialAccounts, useSocialActions } from '@/lib/social'
+import { formatDuration } from '@/lib/creators'
+import {
+  socialMeta,
+  suggestTime,
+  tiktokPrivacyOptions,
+  toLocalInput,
+  usePublications,
+  useSocialAccounts,
+  useSocialActions,
+  type SocialPlatform,
+  type TikTokPrivacy,
+} from '@/lib/social'
 
-type Props = { clipId: string; defaultTitle: string; workspaceId: string; onClose: () => void }
+// Longer than a platform accepts (e.g. a whole-video animation on Reels) → can't be ticked.
+const exceedsLimit = (platform: SocialPlatform, seconds?: number) => !!seconds && seconds > socialMeta[platform].maxSeconds
 
-export function ScheduleDialog({ clipId, defaultTitle, workspaceId, onClose }: Props) {
+type Props = { clipId: string; defaultTitle: string; workspaceId: string; durationSeconds?: number; onClose: () => void }
+
+export function ScheduleDialog({ clipId, defaultTitle, workspaceId, durationSeconds, onClose }: Props) {
   const dialog = useRef<HTMLDialogElement>(null)
   const accounts = useSocialAccounts(workspaceId)
   const pubs = usePublications(workspaceId)
   const { schedule } = useSocialActions(workspaceId)
 
   const active = accounts.data?.filter((a) => a.status === 'active') ?? []
+  const tooLong = (platform: SocialPlatform) => exceedsLimit(platform, durationSeconds)
+  const [tiktokPrivacy, setTiktokPrivacy] = useState<TikTokPrivacy | ''>('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [title, setTitle] = useState(defaultTitle.slice(0, 95))
   const [caption, setCaption] = useState('')
@@ -24,8 +40,11 @@ export function ScheduleDialog({ clipId, defaultTitle, workspaceId, onClose }: P
   useEffect(() => dialog.current?.showModal(), [])
   // Pre-tick every connected account once they load.
   useEffect(() => {
-    if (accounts.data) setSelected(new Set(accounts.data.filter((a) => a.status === 'active').map((a) => a.id)))
-  }, [accounts.data])
+    if (accounts.data) {
+      setSelected(new Set(accounts.data.filter((a) => a.status === 'active' && !exceedsLimit(a.platform, durationSeconds)).map((a) => a.id)))
+    }
+  }, [accounts.data, durationSeconds])
+  const postsToTikTok = active.some((a) => a.platform === 'tiktok' && selected.has(a.id))
 
   function suggest() {
     const taken = (pubs.data ?? []).filter((p) => p.status === 'scheduled').map((p) => new Date(p.scheduled_at))
@@ -42,6 +61,7 @@ export function ScheduleDialog({ clipId, defaultTitle, workspaceId, onClose }: P
         title,
         caption,
         scheduledAt: mode === 'now' ? new Date().toISOString() : new Date(when).toISOString(),
+        ...(postsToTikTok && tiktokPrivacy ? { tiktokPrivacy } : {}),
       },
       { onSuccess: onClose },
     )
@@ -69,10 +89,17 @@ export function ScheduleDialog({ clipId, defaultTitle, workspaceId, onClose }: P
             <ul className="space-y-2">
               {active.map((a) => (
                 <li key={a.id}>
-                  <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-ink-850 p-2.5 has-checked:ring-1 has-checked:ring-spike/50">
+                  <label
+                    className={cn(
+                      'flex cursor-pointer items-center gap-3 rounded-xl bg-ink-850 p-2.5 has-checked:ring-1 has-checked:ring-spike/50',
+                      tooLong(a.platform) && 'cursor-not-allowed opacity-50',
+                    )}
+                    title={tooLong(a.platform) ? `${socialMeta[a.platform].label} takes videos up to ${formatDuration(socialMeta[a.platform].maxSeconds)}` : undefined}
+                  >
                     <input
                       type="checkbox"
                       className="size-4 accent-[#c8ff2e]"
+                      disabled={tooLong(a.platform)}
                       checked={selected.has(a.id)}
                       onChange={(e) => {
                         const next = new Set(selected)
@@ -83,7 +110,10 @@ export function ScheduleDialog({ clipId, defaultTitle, workspaceId, onClose }: P
                     />
                     <span className={cn('size-2 rounded-full', socialMeta[a.platform].dot)} />
                     <span className="min-w-0 flex-1 truncate text-sm">{a.display_name}</span>
-                    <span className="text-xs text-ink-500">{socialMeta[a.platform].label}</span>
+                    <span className="text-xs text-ink-500">
+                      {socialMeta[a.platform].label}
+                      {tooLong(a.platform) && ' · too long'}
+                    </span>
                   </label>
                 </li>
               ))}
@@ -100,7 +130,7 @@ export function ScheduleDialog({ clipId, defaultTitle, workspaceId, onClose }: P
 
         <div>
           <label htmlFor="pub-title" className="mb-1.5 block text-sm font-medium text-ink-300">
-            Title <span className="text-ink-500">(YouTube & Facebook)</span>
+            Title <span className="text-ink-500">(YouTube, Facebook & TikTok)</span>
           </label>
           <input id="pub-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={100} className={inputClasses} />
         </div>
@@ -118,6 +148,37 @@ export function ScheduleDialog({ clipId, defaultTitle, workspaceId, onClose }: P
             className={cn(inputClasses, 'h-auto py-2.5')}
           />
         </div>
+
+        {postsToTikTok && (
+          <div>
+            <label htmlFor="pub-tiktok-privacy" className="mb-1.5 block text-sm font-medium text-ink-300">
+              Who can see the TikTok post
+            </label>
+            <select
+              id="pub-tiktok-privacy"
+              required
+              value={tiktokPrivacy}
+              onChange={(e) => setTiktokPrivacy(e.target.value as TikTokPrivacy)}
+              className={inputClasses}
+            >
+              <option value="" disabled>
+                Choose…
+              </option>
+              {tiktokPrivacyOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-xs text-ink-500">
+              Until TikTok approves SpikeCut, only “Only me” posts go through. By posting you agree to TikTok’s{' '}
+              <a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank" rel="noreferrer" className="underline">
+                Music Usage Confirmation
+              </a>
+              .
+            </p>
+          </div>
+        )}
 
         <div>
           <p className="mb-2 text-sm font-medium text-ink-300">When</p>
@@ -152,7 +213,7 @@ export function ScheduleDialog({ clipId, defaultTitle, workspaceId, onClose }: P
           )}
         </div>
 
-        <ActionButton type="submit" className="w-full" loading={schedule.isPending} disabled={!selected.size}>
+        <ActionButton type="submit" className="w-full" loading={schedule.isPending} disabled={!selected.size || (postsToTikTok && !tiktokPrivacy)}>
           {mode === 'now' ? 'Publish now' : `Schedule to ${selected.size} account${selected.size === 1 ? '' : 's'}`}
         </ActionButton>
         <p className="text-center text-xs text-ink-500">Only post clips you have permission to share.</p>

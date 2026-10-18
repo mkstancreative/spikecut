@@ -1,4 +1,4 @@
-export type SocialPlatform = 'youtube' | 'instagram' | 'facebook'
+export type SocialPlatform = 'youtube' | 'instagram' | 'facebook' | 'tiktok'
 
 export type ConnectedAccount = {
   platform: SocialPlatform
@@ -19,6 +19,7 @@ export type PublishInput = {
   videoFile?: string // local path when uploading bytes directly
   title: string
   caption: string
+  options?: Record<string, unknown> // per-post platform settings, e.g. TikTok privacy level
 }
 
 export type PublishResult = { postId: string; permalink: string | null }
@@ -32,5 +33,7 @@ export class SocialError extends Error {
   }
 }
 
-export const redirectUri = (provider: 'google' | 'meta') =>
+export type SocialProvider = 'google' | 'meta' | 'tiktok'
+
+export const redirectUri = (provider: SocialProvider) =>
   `${(process.env.APP_URL?.trim() || 'https://localhost:5180').replace(/\/$/, '')}/api/oauth/${provider}/callback`

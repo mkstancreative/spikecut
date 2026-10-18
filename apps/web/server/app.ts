@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono'
+import { cartoonStyle, MAX_DETAILS_CHARS } from '../src/lib/animatePresets'
 import { getPlan, type Currency } from '../src/lib/pricing'
 import { getEntitlements } from './entitlements'
 import {
@@ -19,7 +20,10 @@ import { enabledProviders, saveAccounts, SocialError } from './social'
 import { signState, verifyState } from './social/crypto'
 import { googleAuthUrl, googleExchange } from './social/google'
 import { metaAuthUrl, metaExchange } from './social/meta'
+import { tiktokAuthUrl, tiktokExchange } from './social/tiktok'
+import type { SocialProvider } from './social/types'
 import { supabaseAdmin } from './supabase'
+import { falEnabled } from './worker/fal'
 
 type AuthedUser = { id: string; email: string }
 
@@ -229,6 +233,183 @@ app.post('/moments/:id/render', async (c) => {
   return c.json({ ok: true })
 })
 
+// ── Animate: the user's own uploads
+
+// Which cartoon engines this server can run (the AI styles need a fal.ai key).
+app.get('/cartoon/engines', (c) => c.json({ local: true, fal: falEnabled() }))
+
+function checkStyle(styleId: unknown) {
+  const style = cartoonStyle(styleId)
+  if (!style) throw new BillingError('Pick a style first')
+  if (style.engine === 'fal' && !falEnabled()) throw new BillingError('AI cartoon styles aren’t set up on the server yet', 503)
+  return style
+}
+
+// The browser has already uploaded the file into uploads/<workspaceId>/…; register it and queue the cartoon.
+app.post('/uploads', async (c) => {
+  const user = await requireUser(c)
+  const body = await c.req.json<{ workspaceId?: string; path?: string; title?: string; style?: string; details?: string }>()
+  const { workspaceId, path } = body
+  if (!workspaceId || !path) throw new BillingError('Missing upload')
+  await requireMember(user.id, workspaceId)
+  await requireActivePlan(workspaceId)
+  const style = checkStyle(body.style)
+  const details = style.engine === 'fal' ? body.details?.trim().slice(0, MAX_DETAILS_CHARS) || undefined : undefined
+
+  const [folder, name, ...rest] = path.split('/')
+  if (folder !== workspaceId || !name || rest.length) throw new BillingError('That upload belongs to another workspace', 403)
+  const db = supabaseAdmin()
+  const { data: found, error: listErr } = await db.storage.from('uploads').list(workspaceId, { search: name, limit: 1 })
+  if (listErr) throw listErr
+  if (!found?.some((f) => f.name === name)) throw new BillingError('Upload not found — try uploading again', 404)
+
+  const title = body.title?.trim().slice(0, 200) || 'Untitled upload'
+  return c.json({ id: await queueCartoon({ workspaceId, title, url: path, sourcePath: path, platform: 'upload', style: style.id, details }) })
+})
+
+/** An Animate upload is a creator-less stream; the cartoonify job takes it from there. */
+async function queueCartoon(v: {
+  workspaceId: string
+  title: string
+  url: string
+  sourcePath: string | null
+  platform: 'upload' | 'link'
+  style: string
+  details?: string
+}) {
+  const db = supabaseAdmin()
+  const id = crypto.randomUUID()
+  const { error } = await db.from('streams').insert({
+    id,
+    workspace_id: v.workspaceId,
+    creator_id: null,
+    platform: v.platform,
+    external_id: id,
+    kind: 'upload',
+    status: 'available',
+    title: v.title,
+    url: v.url,
+    source_path: v.sourcePath,
+    published_at: new Date().toISOString(),
+    analysis_status: 'queued',
+    analysis_message: 'Waiting for the worker',
+  })
+  if (error) throw error
+  const { error: jobErr } = await db
+    .from('jobs')
+    .insert({ workspace_id: v.workspaceId, type: 'cartoonify', payload: { streamId: id, style: v.style, details: v.details } })
+  if (jobErr) throw jobErr
+  return id
+}
+
+// The worker downloads it with yt-dlp, so anything yt-dlp supports works (TikTok, Instagram, X, Facebook, YouTube…).
+// Only public web addresses: the worker would otherwise fetch whatever is on its own network.
+function publicVideoUrl(raw: string | undefined) {
+  let url: URL
+  try {
+    url = new URL(raw?.trim() ?? '')
+  } catch {
+    throw new BillingError('That doesn’t look like a link — paste the full address, starting with https://')
+  }
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  const privateHost =
+    !host.includes('.') ||
+    /\.(local|localhost|internal|lan|home|corp)$/.test(host) ||
+    /^(127\.|10\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) ||
+    host.includes(':') // IPv6 literals
+  if (!['http:', 'https:'].includes(url.protocol) || privateHost || url.username || url.password) {
+    throw new BillingError('Paste a public link to a video post')
+  }
+  return url
+}
+
+app.post('/uploads/link', async (c) => {
+  const user = await requireUser(c)
+  const body = await c.req.json<{ workspaceId?: string; url?: string; style?: string; details?: string }>()
+  const { workspaceId } = body
+  if (!workspaceId) throw new BillingError('Missing workspace')
+  await requireMember(user.id, workspaceId)
+  await requireActivePlan(workspaceId)
+  const url = publicVideoUrl(body.url)
+  const style = checkStyle(body.style)
+  const details = style.engine === 'fal' ? body.details?.trim().slice(0, MAX_DETAILS_CHARS) || undefined : undefined
+  // The worker replaces this with the post's real title once it has looked the link up.
+  const title = `Video from ${url.hostname.replace(/^(www|m|vm|vt)\./, '')}`
+  return c.json({ id: await queueCartoon({ workspaceId, title, url: url.toString(), sourcePath: null, platform: 'link', style: style.id, details }) })
+})
+
+// Try a failed upload again, with the same style unless another is given. Credits were refunded on failure.
+app.post('/uploads/:id/retry', async (c) => {
+  const user = await requireUser(c)
+  const body = await c.req.json<{ style?: string }>().catch(() => ({}) as { style?: string })
+  const db = supabaseAdmin()
+  const { data: stream, error } = await db
+    .from('streams')
+    .select('id, workspace_id, kind, analysis_status')
+    .eq('id', c.req.param('id'))
+    .maybeSingle()
+  if (error) throw error
+  if (!stream || stream.kind !== 'upload') throw new BillingError('Upload not found', 404)
+  await requireMember(user.id, stream.workspace_id)
+  await requireActivePlan(stream.workspace_id)
+  if (stream.analysis_status !== 'failed') throw new BillingError('Only failed uploads can be retried', 409)
+
+  const { data: last } = await db
+    .from('jobs')
+    .select('payload')
+    .eq('type', 'cartoonify')
+    .eq('payload->>streamId', stream.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const prev = (last?.payload ?? {}) as { style?: string; details?: string }
+  const style = checkStyle(body.style ?? prev.style)
+  const { error: jobErr } = await db
+    .from('jobs')
+    .insert({ workspace_id: stream.workspace_id, type: 'cartoonify', payload: { streamId: stream.id, style: style.id, details: prev.details } })
+  if (jobErr) throw jobErr
+  await db.from('streams').update({ analysis_status: 'queued', analysis_message: 'Waiting for the worker' }).eq('id', stream.id)
+  return c.json({ ok: true })
+})
+
+app.delete('/uploads/:id', async (c) => {
+  const user = await requireUser(c)
+  const db = supabaseAdmin()
+  const { data: stream, error } = await db
+    .from('streams')
+    .select('id, workspace_id, kind, source_path, analysis_status')
+    .eq('id', c.req.param('id'))
+    .maybeSingle()
+  if (error) throw error
+  if (!stream || stream.kind !== 'upload') throw new BillingError('Upload not found', 404)
+  await requireMember(user.id, stream.workspace_id)
+  if (stream.analysis_status === 'running') throw new BillingError('Wait for the scan to finish first', 409)
+
+  const { data: clips, error: clipErr } = await db.from('clips').select('id, status, video_path, thumbnail_path').eq('stream_id', stream.id)
+  if (clipErr) throw clipErr
+  if (clips?.some((cl) => cl.status === 'rendering')) throw new BillingError('Wait for the animation to finish first', 409)
+  const { count: posting } = await db
+    .from('publications')
+    .select('id', { count: 'exact', head: true })
+    .in('clip_id', clips?.map((cl) => cl.id) ?? [])
+    .eq('status', 'publishing')
+  if (posting) throw new BillingError('A clip from this video is being posted right now — try again in a minute', 409)
+
+  const clipFiles = (clips ?? []).flatMap((cl) => [cl.video_path, cl.thumbnail_path]).filter(Boolean) as string[]
+  if (clipFiles.length) {
+    const { error: rmErr } = await db.storage.from('clips').remove(clipFiles)
+    if (rmErr) throw rmErr
+  }
+  if (stream.source_path) {
+    const { error: rmErr } = await db.storage.from('uploads').remove([stream.source_path])
+    if (rmErr) throw rmErr
+  }
+  // Moments, clips and their posts go with it (FK cascade).
+  const { error: delErr } = await db.from('streams').delete().eq('id', stream.id)
+  if (delErr) throw delErr
+  return c.json({ ok: true })
+})
+
 // ── Cleaning up clips & moments
 
 app.delete('/clips/:id', async (c) => {
@@ -307,17 +488,18 @@ app.delete('/streams/:id/moments', async (c) => {
 
 app.get('/accounts/providers', (c) => c.json(enabledProviders()))
 
+const providerNames: Record<SocialProvider, string> = { google: 'YouTube', meta: 'Instagram/Facebook', tiktok: 'TikTok' }
+
 app.post('/accounts/connect', async (c) => {
   const user = await requireUser(c)
-  const { workspaceId, provider } = await c.req.json<{ workspaceId?: string; provider?: 'google' | 'meta' }>()
-  if (!workspaceId || (provider !== 'google' && provider !== 'meta')) throw new BillingError('Unknown provider')
+  const { workspaceId, provider } = await c.req.json<{ workspaceId?: string; provider?: SocialProvider }>()
+  if (!workspaceId || !provider || !(provider in providerNames)) throw new BillingError('Unknown provider')
   await requireMember(user.id, workspaceId)
   await requireActivePlan(workspaceId)
-  if (!enabledProviders()[provider]) {
-    throw new BillingError(`${provider === 'google' ? 'YouTube' : 'Instagram/Facebook'} isn’t set up on the server yet`, 503)
-  }
+  if (!enabledProviders()[provider]) throw new BillingError(`${providerNames[provider]} isn’t set up on the server yet`, 503)
   const state = await signState({ workspaceId, userId: user.id, provider })
-  return c.json({ url: provider === 'google' ? googleAuthUrl(state) : metaAuthUrl(state) })
+  const url = provider === 'google' ? googleAuthUrl(state) : provider === 'meta' ? metaAuthUrl(state) : tiktokAuthUrl(state)
+  return c.json({ url })
 })
 
 // Browser lands here from Google/Meta; we finish the exchange and send them back to the Accounts page.
@@ -330,7 +512,9 @@ app.get('/oauth/:provider/callback', async (c) => {
     if (state.provider !== c.req.param('provider')) throw new Error('Provider mismatch')
     const code = c.req.query('code')
     if (!code) throw new Error('Missing authorisation code')
-    const accounts = state.provider === 'google' ? await googleExchange(code) : await metaExchange(code)
+    const exchange = { google: googleExchange, meta: metaExchange, tiktok: tiktokExchange }[state.provider as SocialProvider]
+    if (!exchange) throw new Error('Unknown provider')
+    const accounts = await exchange(code)
     const { saved, skipped } = await saveAccounts(state.workspaceId, state.userId, accounts)
     return back({ connected: String(saved), ...(skipped ? { skipped: String(skipped) } : {}) })
   } catch (e) {
@@ -353,7 +537,14 @@ app.delete('/accounts/:id', async (c) => {
 
 app.post('/publications', async (c) => {
   const user = await requireUser(c)
-  const body = await c.req.json<{ clipId?: string; accountIds?: string[]; title?: string; caption?: string; scheduledAt?: string }>()
+  const body = await c.req.json<{
+    clipId?: string
+    accountIds?: string[]
+    title?: string
+    caption?: string
+    scheduledAt?: string
+    tiktokPrivacy?: string
+  }>()
   const db = supabaseAdmin()
   const { data: clip, error: clipErr } = await db.from('clips').select('id, workspace_id, status').eq('id', body.clipId ?? '').maybeSingle()
   if (clipErr) throw clipErr
@@ -373,6 +564,9 @@ app.post('/publications', async (c) => {
   if (accounts.length !== ids.length) throw new BillingError('One of those accounts isn’t connected to this workspace')
   const broken = accounts.find((a) => a.status !== 'active')
   if (broken) throw new BillingError(`Reconnect your ${broken.platform} account first`)
+  // TikTok requires the poster to pick who can see it — there's deliberately no default.
+  const privacy = ['PUBLIC_TO_EVERYONE', 'MUTUAL_FOLLOW_FRIENDS', 'FOLLOWER_OF_CREATOR', 'SELF_ONLY'].find((p) => p === body.tiktokPrivacy)
+  if (accounts.some((a) => a.platform === 'tiktok') && !privacy) throw new BillingError('Choose who can see the TikTok post')
 
   const when = body.scheduledAt ? new Date(body.scheduledAt) : new Date()
   if (Number.isNaN(when.getTime())) throw new BillingError('Invalid date')
@@ -386,6 +580,7 @@ app.post('/publications', async (c) => {
       platform: a.platform,
       title: body.title?.trim() || null,
       caption: body.caption?.trim() || null,
+      options: a.platform === 'tiktok' ? { privacyLevel: privacy } : {},
       scheduled_at: when.toISOString(),
       status: 'scheduled',
       attempts: 0,

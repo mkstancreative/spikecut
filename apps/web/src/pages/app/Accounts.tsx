@@ -24,6 +24,13 @@ const providers = [
     dot: 'bg-pink-500',
     note: 'Your Instagram must be a Business or Creator account linked to a Facebook Page.',
   },
+  {
+    id: 'tiktok' as const,
+    name: 'TikTok',
+    blurb: 'Post clips and animations straight to your TikTok profile.',
+    dot: 'bg-cyan-400',
+    note: 'Until TikTok approves SpikeCut’s app, posts go up as private (“Only me”) — you can make them public in the TikTok app.',
+  },
 ]
 
 function AccountRow({ account, onDisconnect, busy }: { account: SocialAccount; onDisconnect: () => void; busy: boolean }) {
@@ -156,16 +163,6 @@ export default function Accounts() {
             )
           })}
         </div>
-
-        <section className="card flex items-center justify-between gap-4 p-5 opacity-70">
-          <div>
-            <h2 className="flex items-center gap-2 font-display text-lg font-bold">
-              <span className="size-2.5 rounded-full bg-ink-400" /> TikTok
-            </h2>
-            <p className="mt-1 text-sm text-ink-400">Direct posting arrives once TikTok approves our app.</p>
-          </div>
-          <span className="rounded-full bg-white/6 px-3 py-1 font-mono text-[10px] tracking-wider text-ink-400 uppercase">Soon</span>
-        </section>
       </div>
     </>
   )

@@ -4,12 +4,13 @@ import { supabaseAdmin } from '../supabase'
 import { decrypt, encrypt } from './crypto'
 import { googleEnabled, googleRefresh, publishYouTube } from './google'
 import { metaEnabled, publishFacebook, publishInstagram } from './meta'
+import { publishTikTok, tiktokEnabled, tiktokRefresh } from './tiktok'
 import { SocialError, type ConnectedAccount, type PublishInput, type PublishResult, type SocialPlatform } from './types'
 
 export * from './types'
 
 export function enabledProviders() {
-  return { google: googleEnabled(), meta: metaEnabled() }
+  return { google: googleEnabled(), meta: metaEnabled(), tiktok: tiktokEnabled() }
 }
 
 /** Store accounts from an OAuth callback, respecting the plan's social-account limit. */
@@ -63,17 +64,23 @@ type AccountRow = {
   token_expires_at: string | null
 }
 
-/** A usable access token, refreshing Google tokens that are about to expire. */
+/** A usable access token, refreshing YouTube and TikTok tokens that are about to expire. */
 async function accessTokenFor(acc: AccountRow): Promise<string> {
   const token = await decrypt(acc.access_token_enc)
   const expiresSoon = acc.token_expires_at && new Date(acc.token_expires_at).getTime() < Date.now() + 5 * 60 * 1000
-  if (acc.platform === 'youtube' && (expiresSoon || !token)) {
+  if ((acc.platform === 'youtube' || acc.platform === 'tiktok') && (expiresSoon || !token)) {
+    const name = acc.platform === 'youtube' ? 'YouTube' : 'TikTok'
     const refresh = await decrypt(acc.refresh_token_enc)
-    if (!refresh) throw new SocialError('YouTube access expired — reconnect the channel', true)
-    const fresh = await googleRefresh(refresh)
+    if (!refresh) throw new SocialError(`${name} access expired — reconnect the account`, true)
+    const fresh: { accessToken: string; expiresAt: string; refreshToken?: string } =
+      acc.platform === 'youtube' ? await googleRefresh(refresh) : await tiktokRefresh(refresh)
     await supabaseAdmin()
       .from('social_accounts')
-      .update({ access_token_enc: await encrypt(fresh.accessToken), token_expires_at: fresh.expiresAt })
+      .update({
+        access_token_enc: await encrypt(fresh.accessToken),
+        token_expires_at: fresh.expiresAt,
+        ...(fresh.refreshToken ? { refresh_token_enc: await encrypt(fresh.refreshToken) } : {}),
+      })
       .eq('id', acc.id)
     return fresh.accessToken
   }
@@ -86,5 +93,6 @@ export async function publishTo(acc: AccountRow, post: Omit<PublishInput, 'acces
   if (acc.platform === 'youtube') return publishYouTube(input)
   if (acc.platform === 'instagram') return publishInstagram(input)
   if (acc.platform === 'facebook') return publishFacebook(input)
+  if (acc.platform === 'tiktok') return publishTikTok(input)
   throw new SocialError(`${acc.platform} publishing isn't available yet`)
 }
