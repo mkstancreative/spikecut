@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs'
 import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises'
+import { availableParallelism } from 'node:os'
 import { join } from 'node:path'
-import { mediaDir, SOURCE_TTL_MS, tools } from './config'
+import { mediaDir, SOURCE_TTL_MS, tools, ytdlpAuthArgs } from './config'
 import { run } from './exec'
 
 export type Word = { start: number; end: number; text: string }
@@ -26,6 +27,7 @@ export async function downloadSource(url: string, streamId: string, onProgress?:
   await run(
     tools.ytdlp,
     [
+      ...ytdlpAuthArgs(),
       '--no-playlist',
       '--no-warnings',
       '--newline',
@@ -69,12 +71,30 @@ export async function probeDuration(file: string): Promise<number> {
   return Number(out.trim())
 }
 
+/** Non-speech moments whisper tags, e.g. "(laughing)" or "[applause]" — strong clip signals. */
+export type AudioEvent = { at: number; kind: 'laughter' | 'applause' | 'cheering' }
+export type Transcript = { words: Word[]; events: AudioEvent[] }
+
+const EVENT_KINDS: [RegExp, AudioEvent['kind']][] = [
+  [/laugh|chuckl|giggl/i, 'laughter'],
+  [/applau|clap/i, 'applause'],
+  [/cheer|crowd|whoop/i, 'cheering'],
+]
+
 /** Word-level transcript via whisper.cpp (one word per segment). */
-export async function transcribe(wav: string, outDir: string, onProgress?: (pct: number) => void): Promise<Word[]> {
+export async function transcribe(wav: string, outDir: string, onProgress?: (pct: number) => void): Promise<Transcript> {
   const base = join(outDir, 'transcript')
+  const vad = existsSync(tools.vadModel) ? ['--vad', '-vm', tools.vadModel] : []
   await run(
     tools.whisper,
-    ['-m', tools.whisperModel, '-f', wav, '-ml', '1', '-sow', '-oj', '-of', base, '-pp', '-np'],
+    [
+      '-m', tools.whisperModel, '-f', wav, '-ml', '1', '-sow',
+      // Don't condition on previous text: stops one hallucinated line repeating for minutes.
+      '-mc', '0',
+      '-t', String(Math.min(8, Math.max(2, availableParallelism() - 2))),
+      ...vad,
+      '-oj', '-of', base, '-pp', '-np',
+    ],
     {
       onStderr: (line) => {
         const m = line.match(/progress\s*=\s*(\d+)%/)
@@ -85,9 +105,28 @@ export async function transcribe(wav: string, outDir: string, onProgress?: (pct:
   const json = JSON.parse(await readFile(`${base}.json`, 'utf8')) as {
     transcription: { offsets: { from: number; to: number }; text: string }[]
   }
-  return json.transcription
-    .map((s) => ({ start: s.offsets.from / 1000, end: s.offsets.to / 1000, text: s.text.trim() }))
-    .filter((w) => w.text && !/^\[.*\]$|^\(.*\)$/.test(w.text)) // drop [Music], (laughs) style tokens
+  // Tags like "(speaking in foreign language)" arrive split across several word segments, so walk them
+  // as a stream: anything inside (...) or [...] is dropped from the words and kept as an event if it's a reaction.
+  const words: Word[] = []
+  const events: AudioEvent[] = []
+  let tag: { at: number; text: string } | null = null
+  for (const s of json.transcription) {
+    const text = s.text.trim()
+    if (!text) continue
+    const at = s.offsets.from / 1000
+    if (!tag && /^[([]/.test(text)) tag = { at, text: '' }
+    if (tag) {
+      tag.text += ` ${text}`
+      if (/[)\]][.,!?]*$/.test(text)) {
+        const kind = EVENT_KINDS.find(([re]) => re.test(tag!.text))?.[1]
+        if (kind) events.push({ at: tag.at, kind })
+        tag = null
+      }
+      continue
+    }
+    words.push({ start: at, end: s.offsets.to / 1000, text })
+  }
+  return { words, events }
 }
 
 /** Loudness in dBFS for each window of `windowSec`, read straight from the 16-bit PCM WAV. */

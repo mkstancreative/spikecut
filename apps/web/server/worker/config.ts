@@ -12,7 +12,12 @@ export const tools = {
   ffprobe: process.env.FFPROBE_BIN?.trim() || 'ffprobe',
   ytdlp: process.env.YTDLP_BIN?.trim() || 'yt-dlp',
   whisper: process.env.WHISPER_BIN?.trim() || 'whisper-cli',
-  whisperModel: process.env.WHISPER_MODEL?.trim() || join(repoRoot, '.models/ggml-base.en.bin'),
+  // large-v3-turbo is far more accurate than base.en (accents, crosstalk, music beds) and still fast on Metal.
+  whisperModel:
+    process.env.WHISPER_MODEL?.trim() ||
+    firstExisting(join(repoRoot, '.models/ggml-large-v3-turbo-q5_0.bin'), join(repoRoot, '.models/ggml-base.en.bin')),
+  // Silero VAD: whisper only decodes speech, so music/silence can't trigger hallucinated text. Optional.
+  vadModel: process.env.WHISPER_VAD_MODEL?.trim() || join(repoRoot, '.models/ggml-silero-v5.1.2.bin'),
   python: process.env.PYTHON_BIN?.trim() || join(repoRoot, 'workers/py/.venv/bin/python'),
   pyDir: join(repoRoot, 'workers/py'),
   faceModel: process.env.FACE_MODEL?.trim() || join(repoRoot, '.models/face_detection_yunet_2023mar.onnx'),
@@ -23,6 +28,16 @@ export const tools = {
       '/System/Library/Fonts/Supplemental/Arial Bold.ttf',
       '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
     ),
+}
+
+// YouTube often demands sign-in ("confirm you're not a bot") from server IPs. Point yt-dlp at a cookies.txt export
+// (YTDLP_COOKIES) or let it read a logged-in local browser (YTDLP_COOKIES_FROM_BROWSER=chrome|safari|firefox|…).
+export function ytdlpAuthArgs(): string[] {
+  const file = process.env.YTDLP_COOKIES?.trim()
+  if (file) return ['--cookies', file]
+  const browser = process.env.YTDLP_COOKIES_FROM_BROWSER?.trim()
+  if (browser) return ['--cookies-from-browser', browser]
+  return []
 }
 
 // Source videos are cached briefly so several clips can be cut from one download, then deleted.

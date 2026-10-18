@@ -13,7 +13,7 @@ import { mediaDir, MAX_SOURCE_SECONDS, tools } from './config'
 import { cleanupSources, downloadSource, extractAudio, loudness, probeDuration, transcribe } from './media'
 import { publishDue } from './publisher'
 import { renderClip } from './render'
-import { detectMoments } from './scoring'
+import { findMoments } from './scoring'
 
 type Job = { id: string; workspace_id: string; type: 'analyze' | 'render'; payload: Record<string, string>; attempts: number }
 
@@ -62,14 +62,14 @@ async function analyze(job: Job) {
     const wav = await extractAudio(source, work)
 
     await step(35, 'Transcribing speech · 0%')
-    const words = await transcribe(wav, work, (p) => {
+    const transcript = await transcribe(wav, work, (p) => {
       const pct = 35 + p * 0.5 // whisper reports 0–100
       progress(job.id, pct, `Transcribing speech · ${p}%`)
       setStream(streamId, 'running', `Transcribing speech · ${p}%`)
     })
 
-    await step(88, 'Scoring moments')
-    const moments = detectMoments(words, await loudness(wav), duration)
+    await step(88, 'Finding the best moments')
+    const moments = await findMoments(transcript, await loudness(wav), duration, { title: stream.title ?? undefined })
 
     // Replace previous un-rendered detections; keep anything already turned into a clip.
     await db.from('moments').delete().eq('stream_id', streamId).in('status', ['detected', 'failed'])
@@ -91,7 +91,7 @@ async function analyze(job: Job) {
 
     const message = moments.length
       ? `${moments.length} moment${moments.length === 1 ? '' : 's'} found`
-      : words.length < 20
+      : transcript.words.length < 20
         ? 'Not enough speech to find moments'
         : 'No strong moments found'
     await setStream(streamId, 'done', message, { analyzed_at: new Date().toISOString() })

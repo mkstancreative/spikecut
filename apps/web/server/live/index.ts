@@ -9,10 +9,10 @@ import { join } from 'node:path'
 import { queueRender } from '../clips'
 import { getEntitlements } from '../entitlements'
 import { supabaseAdmin } from '../supabase'
-import { mediaDir, tools } from '../worker/config'
+import { mediaDir, tools, ytdlpAuthArgs } from '../worker/config'
 import { run } from '../worker/exec'
 import { loudness, transcribe } from '../worker/media'
-import { detectMoments } from '../worker/scoring'
+import { findMoments } from '../worker/scoring'
 import { pickSegments, readSegments, segmentsToWav, sessionDir } from './segments'
 
 const TICK_MS = 15_000
@@ -41,7 +41,7 @@ const log = (...a: unknown[]) => console.log('[live]', ...a)
 
 async function resolveMediaUrl(pageUrl: string): Promise<string> {
   // Ask yt-dlp for the stream's HLS URL (≤720p is plenty for vertical clips and keeps CPU low).
-  const out = await run(tools.ytdlp, ['-g', '--no-warnings', '-f', 'best[height<=720]/best', pageUrl])
+  const out = await run(tools.ytdlp, [...ytdlpAuthArgs(), '-g', '--no-warnings', '-f', 'best[height<=720]/best', pageUrl])
   const url = out.trim().split('\n')[0]
   if (!url) throw new Error('No playable stream URL found')
   return url
@@ -131,11 +131,15 @@ async function analyze(session: Session, final = false) {
   try {
     const offset = window[0].start
     const wav = await segmentsToWav(window, work)
-    const words = (await transcribe(wav, work)).map((w) => ({ ...w, start: w.start + offset, end: w.end + offset }))
+    const t = await transcribe(wav, work)
+    const transcript = {
+      words: t.words.map((w) => ({ ...w, start: w.start + offset, end: w.end + offset })),
+      events: t.events.map((e) => ({ ...e, at: e.at + offset })),
+    }
     // Pad loudness so its index lines up with absolute recording time.
     const db0 = await loudness(wav)
     const padded = [...Array(Math.round(offset / 0.5)).fill(-90), ...db0]
-    const found = detectMoments(words, padded, captured, { scale: 'absolute', maxMoments: 3 })
+    const found = (await findMoments(transcript, padded, captured, { scale: 'absolute', maxMoments: 3, title: session.title, focusFrom: from + 5 }))
       .filter((m) => m.end > from + 5) // only moments that are actually in this window
 
     // Skip anything overlapping a moment we already stored for this recording.

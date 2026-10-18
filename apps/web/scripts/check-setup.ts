@@ -109,6 +109,10 @@ for (const [name, cmd, args] of [
     fail(`${name}: ${(e as Error).message.slice(0, 120)}`)
   }
 }
+if (existsSync(tools.vadModel)) ok('voice activity model (skips music/silence)')
+else console.log(`  • voice activity model not found at ${tools.vadModel} — transcripts may hallucinate over music`)
+if (process.env.ANTHROPIC_API_KEY?.trim()) ok('Claude moment picking (ANTHROPIC_API_KEY set)')
+else console.log('  • Claude moment picking off (ANTHROPIC_API_KEY empty) — using the audio/keyword heuristic')
 for (const [name, path] of [['speech model', tools.whisperModel], ['face model', tools.faceModel], ['caption font', tools.captionFont]]) {
   if (existsSync(path)) ok(`${name} (${path.split('/').pop()})`)
   else fail(`${name} missing at ${path}`)

@@ -158,7 +158,8 @@ function MomentRow({
         <p className="mt-1 font-mono text-[11px] text-ink-500">
           {formatTimestamp(moment.start_seconds)}–{formatTimestamp(moment.end_seconds)} · {len}s
         </p>
-        {!!moment.signals.hooks?.length && (
+        {moment.signals.ai?.why && <p className="mt-1.5 text-xs text-ink-300">{moment.signals.ai.why}</p>}
+        {!moment.signals.ai && !!moment.signals.hooks?.length && (
           <div className="mt-2 flex flex-wrap gap-1">
             {moment.signals.hooks.slice(0, 4).map((h) => (
               <span key={h} className="rounded-full bg-white/6 px-2 py-0.5 text-[10px] text-ink-300">

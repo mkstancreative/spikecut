@@ -16,7 +16,7 @@ export type Moment = {
   score: number
   title: string | null
   transcript: string | null
-  signals: { hooks?: string[]; loudness?: number; pace?: number }
+  signals: { hooks?: string[]; loudness?: number; pace?: number; ai?: { score: number; why: string } }
   status: 'detected' | 'queued' | 'rendering' | 'rendered' | 'failed'
 }
 
