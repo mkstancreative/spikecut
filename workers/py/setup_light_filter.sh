@@ -30,6 +30,6 @@ else
   echo "Converted models are in $OUT"
 fi
 
-# The worker's own venv runs them.
-"$ROOT/workers/py/.venv/bin/pip" install -q onnxruntime
+# The worker's own venv runs them. onnx lets light_filter.py pin the graphs to each video's size (~5x faster on CoreML).
+"$ROOT/workers/py/.venv/bin/pip" install -q onnxruntime onnx
 echo "Done — restart the worker."

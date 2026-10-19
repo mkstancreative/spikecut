@@ -41,7 +41,7 @@ async function download(url: string, out: string) {
   await pipeline(Readable.fromWeb(res.body as NodeReadableStream), createWriteStream(out))
 }
 
-/** The free engine: DCT-Net 3D frame by frame, ~4x real time on an M1 Pro. */
+/** The free engine: DCT-Net 3D frame by frame, a little over real time on an M1 Pro. */
 async function lightFilter(job: CartoonJob, source: string, out: string, progress: Progress) {
   const models = tools.lightFilterModels
   if (!existsSync(join(models, 'cartoon_bg.onnx')) || !existsSync(join(models, 'cartoon_h.onnx'))) {
