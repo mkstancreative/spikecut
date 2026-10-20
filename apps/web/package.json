@@ -14,7 +14,8 @@
     "check:setup": "tsx --env-file=.env.local scripts/check-setup.ts",
     "dev:monitor": "tsx watch --include .env.local --env-file-if-exists=.env.local server/monitor.ts",
     "dev:worker": "tsx --env-file-if-exists=.env.local server/worker/index.ts",
-    "dev:live": "tsx --env-file-if-exists=.env.local server/live/index.ts"
+    "dev:live": "tsx --env-file-if-exists=.env.local server/live/index.ts",
+    "style-previews": "tsx --env-file-if-exists=.env.local scripts/style-previews.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.134.0",

@@ -24,7 +24,7 @@ import { formatDuration } from '@/lib/creators'
 import { usePersistentState } from '@/lib/usePersistentState'
 import { useEntitlements, useWorkspace } from '@/lib/workspace'
 
-const credits = (n: number) => `${n} credit${n === 1 ? '' : 's'}`
+const credits = (n: number) => (n === 0 ? 'no credits' : `${n} credit${n === 1 ? '' : 's'}`)
 function UploadRow({
   video,
   job,
@@ -131,6 +131,9 @@ export default function Animate() {
   const style: CartoonStyleId = engines.data && !falReady && cartoonStyle(savedStyle)?.engine === 'fal' ? 'light' : savedStyle
   const isAi = cartoonStyle(style)?.engine === 'fal'
   const balance = ent.data?.credits ?? 0
+  // Free effects need no credits; AI styles need at least one to start.
+  const minCredits = isAi ? 1 : 0
+  const costNote = isAi ? 'Uses 1 credit per started minute' : 'Free — uses no credits'
   const cost = picked?.seconds != null ? creditsFor(style, picked.seconds) : null
   const clipByUpload = new Map(clips.data?.map((c) => [c.stream_id, c]))
   const titleByUpload = new Map(uploads.data?.map((u) => [u.id, u.title]))
@@ -138,7 +141,7 @@ export default function Animate() {
   const chosenSecs = chosen.data?.duration_seconds ?? null
   const chosenTooLong = chosenSecs != null && chosenSecs > MAX_CARTOON_SECONDS
   const chosenCost = chosenSecs != null ? creditsFor(style, chosenSecs) : null
-  const chosenShort = (chosenCost ?? 1) > balance
+  const chosenShort = (chosenCost ?? minCredits) > balance
   const error = (upload.error ?? fromLink.error ?? cartoonify.error ?? retry.error ?? remove.error ?? deleteClip.error) as Error | null
 
   const clearChosen = () => setParams((p) => (p.delete('video'), p), { replace: true })
@@ -245,9 +248,7 @@ export default function Animate() {
                         ? `Longer than ${MAX_CARTOON_SECONDS / 60} minutes — too long to cartoonify`
                         : chosenCost != null
                           ? `Uses ${credits(chosenCost)}`
-                          : isAi
-                            ? 'Uses 1 credit per started minute'
-                            : 'Uses 1 credit'}
+                          : costNote}
                       {!chosenTooLong && chosenShort && ` — you have ${balance}. Top up first.`}
                     </p>
                   </>
@@ -300,13 +301,13 @@ export default function Animate() {
                     aria-label="Video link"
                     className={cn(inputClasses, 'flex-1')}
                   />
-                  <ActionButton type="submit" loading={fromLink.isPending} disabled={balance < 1 || !link.trim()}>
+                  <ActionButton type="submit" loading={fromLink.isPending} disabled={balance < minCredits || !link.trim()}>
                     <Wand2 className="size-4" /> Cartoonify
                   </ActionButton>
                 </div>
                 <p className="text-xs text-ink-500">
                   TikTok, Instagram, Facebook, X, YouTube and most other sites. Public posts only, up to {MAX_CARTOON_SECONDS / 60} minutes ·{' '}
-                  {isAi ? '1 credit per started minute, worked out once it’s downloaded' : '1 credit'}.
+                  {isAi ? '1 credit per started minute, worked out once it’s downloaded' : 'free, no credits'}.
                 </p>
               </form>
             ) : picked ? (
@@ -318,7 +319,7 @@ export default function Animate() {
                     {(picked.file.size / 1e6).toFixed(0)} MB · {cartoonStyle(style)?.label}
                   </p>
                   <p className={cn('mt-1 text-sm', cost != null && cost > balance ? 'text-cut' : 'text-spike')}>
-                    {cost != null ? `Uses ${credits(cost)}` : isAi ? 'Uses 1 credit per started minute' : 'Uses 1 credit'}
+                    {cost != null ? `Uses ${credits(cost)}` : costNote}
                     {cost != null && cost > balance && ` — you have ${balance}. Top up first.`}
                   </p>
                   {uploading && (
@@ -339,7 +340,7 @@ export default function Animate() {
                     <button type="button" onClick={() => setPicked(null)} title="Choose another video" className="rounded-lg p-2 text-ink-400 hover:bg-white/5 hover:text-ink-100">
                       <X className="size-4" />
                     </button>
-                    <ActionButton onClick={start} disabled={cost != null ? cost > balance : balance < 1}>
+                    <ActionButton onClick={start} disabled={cost != null ? cost > balance : balance < minCredits}>
                       <Wand2 className="size-4" /> Cartoonify
                     </ActionButton>
                   </div>
@@ -361,7 +362,7 @@ export default function Animate() {
                 <UploadCloud className="size-8 text-spike" />
                 <p className="mt-3 font-medium">Drop a video here</p>
                 <p className="mt-1 text-sm text-ink-400">MP4, MOV, WebM or MKV · up to {MAX_CARTOON_SECONDS / 60} min</p>
-                <ActionButton className="mt-4" size="sm" onClick={() => fileInput.current?.click()} disabled={balance < 1}>
+                <ActionButton className="mt-4" size="sm" onClick={() => fileInput.current?.click()} disabled={balance < minCredits}>
                   Choose a video
                 </ActionButton>
               </div>
@@ -380,7 +381,7 @@ export default function Animate() {
           />
           <p className="text-center text-xs text-ink-500">
             <Sparkles className="mr-1 inline size-3 text-signal" />
-            AI styles are made by fal.ai; the Light filter runs on SpikeCut’s own server. Only upload videos you own or have permission to use.
+            AI styles are made by fal.ai; free effects run on SpikeCut’s own server. Only upload videos you own or have permission to use.
           </p>
         </section>
 

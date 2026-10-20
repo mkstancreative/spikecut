@@ -1,6 +1,7 @@
 /**
  * Animate: turn an uploaded video into a cartoon.
- *   Light filter → DCT-Net 3D on this machine (workers/py/light_filter.py), free to run
+ *   Light filter → DCT-Net 3D on this machine (workers/py/light_filter.py), free
+ *   Free effects → FFmpeg colour grades and OpenCV drawn looks (./effects.ts), free
  *   AI styles    → fal.ai Lucy Restyle (paid per second, see animatePresets.creditsFor)
  * Either way the restyled picture gets the original audio back, then lands in the clips bucket as a
  * whole-video moment + clip, so publishing and scheduling work exactly like any other clip.
@@ -17,6 +18,7 @@ import { supabaseAdmin } from '../supabase'
 import { mediaDir, tools } from './config'
 import { run } from './exec'
 import { falEnabled, falResult, falStatus, falSubmit, LUCY_RESTYLE, type FalRequest } from './fal'
+import { colourGrade, drawnLook } from './effects'
 import { downloadSource, fetchUpload, probeDuration, probeSize, probeTitle } from './media'
 
 export type CartoonJob = {
@@ -139,11 +141,13 @@ export async function cartoonify(job: CartoonJob, progress: Progress) {
     await db.from('streams').update({ duration_seconds: Math.round(duration) }).eq('id', streamId)
     if (duration > MAX_CARTOON_SECONDS) throw new Error(`Videos can be up to ${MAX_CARTOON_SECONDS / 60} minutes`)
 
-    // Charged once per job (the RPC ignores a repeat of the same ref), refunded by failCartoon.
+    // Charged once per job (the RPC ignores a repeat of the same ref), refunded by failCartoon. Free styles skip it.
     const cost = creditsFor(style.id, duration)
-    const { data: charged, error: spendErr } = await db.rpc('spend_credits', { ws: job.workspace_id, n: cost, spend_ref: chargeRef(job) })
-    if (spendErr) throw spendErr
-    if (!charged) throw new Error(`This video needs ${cost} credit${cost === 1 ? '' : 's'} — top up and press Retry`)
+    if (cost > 0) {
+      const { data: charged, error: spendErr } = await db.rpc('spend_credits', { ws: job.workspace_id, n: cost, spend_ref: chargeRef(job) })
+      if (spendErr) throw spendErr
+      if (!charged) throw new Error(`This video needs ${cost} credit${cost === 1 ? '' : 's'} — top up and press Retry`)
+    }
 
     // A whole-video moment + clip, reused on retry, so the clip shows up (rendering) straight away.
     const { data: existing } = await db.from('moments').select('id').eq('stream_id', streamId).limit(1).maybeSingle()
@@ -169,11 +173,16 @@ export async function cartoonify(job: CartoonJob, progress: Progress) {
       .single()
     if (clipErr) throw clipErr
 
-    await step(12, style.engine === 'fal' ? 'Sending to the AI' : 'Cartoonifying · 0%')
+    await step(12, style.engine === 'fal' ? 'Sending to the AI' : `Applying ${style.label} · 0%`)
     const toon = join(work, 'toon.mp4')
+    const effectProgress = (verb: string) => (pct: number) => progress(job.id, 12 + pct * 0.76, `${verb} · ${Math.round(pct)}%`)
     if (style.engine === 'fal') {
       const details = job.payload.details?.trim()
       await aiRestyle(job, await storedSource(job, stream, source), details ? `${style.prompt}. ${details}` : style.prompt!, toon, duration, progress)
+    } else if (style.engine === 'grade') {
+      await colourGrade(style.id, source, toon, duration, effectProgress('Colour grading'))
+    } else if (style.engine === 'draw') {
+      await drawnLook(style.id, source, toon, effectProgress('Drawing'))
     } else {
       await lightFilter(job, source, toon, progress)
     }
@@ -211,7 +220,7 @@ export async function cartoonify(job: CartoonJob, progress: Progress) {
       })
       .eq('id', clip.id)
     await db.from('moments').update({ status: 'rendered' }).eq('id', momentId)
-    await setStream(streamId, 'done', `${style.label} cartoon ready`, { analyzed_at: new Date().toISOString() })
+    await setStream(streamId, 'done', `${style.label} ready`, { analyzed_at: new Date().toISOString() })
     await progress(job.id, 100, 'Cartoon ready', true)
   } finally {
     await rm(work, { recursive: true, force: true })

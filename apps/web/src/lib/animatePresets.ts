@@ -1,7 +1,20 @@
 // Shared by the Animate page, the API and the worker, so all three agree on what each style means and costs.
 
-export type CartoonEngine = 'local' | 'fal'
-export type CartoonStyleId = 'light' | 'pixar3d' | 'anime' | 'claymation' | 'comic'
+// fal = paid generative AI · local = DCT-Net Light filter · grade = FFmpeg colour grade · draw = OpenCV drawn look.
+// Everything except fal runs on SpikeCut's own worker and is free.
+export type CartoonEngine = 'fal' | 'local' | 'grade' | 'draw'
+export type CartoonStyleId =
+  | 'light'
+  | 'pixar3d'
+  | 'anime'
+  | 'claymation'
+  | 'comic'
+  | 'watercolor'
+  | 'sketch'
+  | 'teal'
+  | 'golden'
+  | 'vintage'
+  | 'noir'
 
 export const cartoonStyles: {
   id: CartoonStyleId
@@ -42,21 +55,33 @@ export const cartoonStyles: {
   {
     id: 'light',
     label: 'Light filter',
-    blurb: 'Free, runs on SpikeCut’s own server — a subtle smoothed, slightly 3D look, best on close-ups',
+    blurb: 'A subtle smoothed, slightly 3D look — best on close-ups',
     engine: 'local',
   },
+  { id: 'watercolor', label: 'Watercolor', blurb: 'Soft painted colour with clean outlines', engine: 'draw' },
+  { id: 'sketch', label: 'Pencil sketch', blurb: 'Black-and-white pencil drawing', engine: 'draw' },
+  { id: 'teal', label: 'Teal & orange', blurb: 'Blockbuster colour grade — warm skin, cool shadows', engine: 'grade' },
+  { id: 'golden', label: 'Golden hour', blurb: 'Warm, glowing sunset tones', engine: 'grade' },
+  { id: 'vintage', label: 'Vintage film', blurb: 'Sepia tones, film grain and a soft vignette', engine: 'grade' },
+  { id: 'noir', label: 'Noir', blurb: 'High-contrast black and white', engine: 'grade' },
 ]
+
+/** Free styles run on SpikeCut's own worker; only the generative AI styles cost credits. */
+export const isFreeStyle = (id: unknown) => {
+  const style = cartoonStyle(id)
+  return !!style && style.engine !== 'fal'
+}
 
 export const cartoonStyle = (id: unknown) => cartoonStyles.find((s) => s.id === id)
 export const isCartoonStyle = (id: unknown): id is CartoonStyleId => !!cartoonStyle(id)
 
-/** fal's Lucy Restyle takes sources up to 30 minutes. The local filter is held to the same limit. */
+/** fal's Lucy Restyle takes sources up to 30 minutes. The free styles are held to the same limit. */
 export const MAX_CARTOON_SECONDS = 30 * 60
 export const MAX_DETAILS_CHARS = 300
 
-/** AI styles cost 1 credit per started minute (the provider bills per second); the local filter is 1 credit a video. */
+/** AI styles cost 1 credit per started minute (the provider bills per second); free styles cost nothing. */
 export function creditsFor(style: CartoonStyleId, seconds: number) {
-  return cartoonStyle(style)?.engine === 'fal' ? Math.max(1, Math.ceil(seconds / 60)) : 1
+  return isFreeStyle(style) ? 0 : Math.max(1, Math.ceil(seconds / 60))
 }
 
 export const uploadMimeTypes = ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-matroska']

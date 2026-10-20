@@ -1,6 +1,9 @@
 # Free effects for Animate — plan
 
-Status: **planned, nothing built yet** (saved 2026-10-20). Next step: decide the two open questions below, then build step 1.
+Status (2026-10-20): **steps 1–3 built**. Free effects cost 0 credits and stay on paid plans only (decided).
+Live: Teal & orange, Golden hour, Vintage film, Noir (FFmpeg); Watercolor, Pencil sketch (OpenCV, `workers/py/effects.py`).
+Previews: run `npm run style-previews -w @spikecut/web -- <your-photo.jpg>` to fill `apps/web/public/styles/`.
+Still to do: step 4 (Comic ink tuning, skin-safe Posterize / Pop art).
 
 Goal: give Animate a set of no-AI effects (colour grades and drawn looks) made with FFmpeg and OpenCV. They cost nothing per video except our own worker time, so the free tier feels more valuable. They won't match the fal.ai AI styles, and they aren't meant to.
 
@@ -45,7 +48,7 @@ Everything needed is already on the worker: FFmpeg 9, OpenCV 5 (`opencv-python-h
    - `apps/web/server/app.ts` → `checkStyle`: the new engines need no fal key.
 4. **Later (optional).** Posterize and Pop art with skin-safe colours.
 
-## Open decisions (answer before building)
+## Decisions (made 2026-10-20: 0 credits, paid plans only)
 
 - **Credits:** should free effects cost **0 credits**? Today even the Light filter costs 1 credit (`creditsFor`) while the picker shows a "Free" badge, so fix that either way.
 - **Free-plan users:** Animate currently needs a paid plan or Day Pass (`requireActivePlan` in `server/app.ts`). Should users with no plan be allowed free effects, maybe with a daily limit?
