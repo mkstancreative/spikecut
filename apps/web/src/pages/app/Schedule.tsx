@@ -44,6 +44,7 @@ function PostRow({
   accountName,
   onCancel,
   onRetry,
+  compact,
 }: {
   pub: Publication
   clip?: Clip
@@ -51,10 +52,18 @@ function PostRow({
   accountName?: string
   onCancel: () => void
   onRetry: () => void
+  compact?: boolean // grid card: status sits under the title instead of beside it
 }) {
   const meta = getSocialMeta(pub.platform)
+  const status = (
+    <span className={cn('inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs capitalize', statusStyle[pub.status], compact && 'mt-1.5')}>
+      {pub.status === 'publishing' && <LoaderCircle className="size-3 animate-spin" />}
+      {pub.status === 'published' && <CheckCircle2 className="size-3" />}
+      {pub.status}
+    </span>
+  )
   return (
-    <li className="flex items-center gap-3 rounded-xl bg-ink-850 p-3">
+    <li className={cn('flex gap-3 rounded-xl bg-ink-850 p-3', compact ? 'items-start' : 'items-center')}>
       <Thumb clip={clip} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{pub.title || title || 'Clip'}</p>
@@ -68,12 +77,9 @@ function PostRow({
             {pub.status === 'scheduled' ? `Retrying soon — ${pub.error}` : pub.error}
           </p>
         )}
+        {compact && <div>{status}</div>}
       </div>
-      <span className={cn('inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs capitalize', statusStyle[pub.status])}>
-        {pub.status === 'publishing' && <LoaderCircle className="size-3 animate-spin" />}
-        {pub.status === 'published' && <CheckCircle2 className="size-3" />}
-        {pub.status}
-      </span>
+      {!compact && status}
       <div className="flex shrink-0 items-center">
         {pub.permalink && (
           <a href={pub.permalink} target="_blank" rel="noreferrer" title="View post" className="rounded-lg p-2 text-ink-400 hover:bg-white/5 hover:text-ink-100">
@@ -119,7 +125,7 @@ export default function Schedule() {
     byDay.set(key, [...(byDay.get(key) ?? []), p])
   }
 
-  const row = (p: Publication) => {
+  const row = (p: Publication, compact = false) => {
     const clip = clipById.get(p.clip_id)
     return (
       <PostRow
@@ -130,6 +136,7 @@ export default function Schedule() {
         accountName={accountName.get(p.social_account_id)}
         onCancel={() => cancel.mutate(p.id)}
         onRetry={() => retry.mutate(p.id)}
+        compact={compact}
       />
     )
   }
@@ -153,7 +160,7 @@ export default function Schedule() {
               {[...byDay.entries()].map(([key, items]) => (
                 <div key={key}>
                   <p className="mb-2 font-mono text-xs tracking-wider text-ink-500 uppercase">{dayLabel(new Date(key))}</p>
-                  <ul className="space-y-2">{items.map(row)}</ul>
+                  <ul className="space-y-2">{items.map((p) => row(p))}</ul>
                 </div>
               ))}
             </div>
@@ -175,7 +182,7 @@ export default function Schedule() {
           <section>
             <h2 className="font-display text-xl font-bold">History</h2>
             <p className="mt-1 text-sm text-ink-400">Published, failed and cancelled posts from the last 30 days.</p>
-            <ul className="mt-4 space-y-2">{history.map(row)}</ul>
+            <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{history.map((p) => row(p, true))}</ul>
           </section>
         )}
       </div>

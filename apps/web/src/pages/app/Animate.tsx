@@ -46,18 +46,18 @@ function UploadRow({
   const busy = video.analysis_status === 'queued' || video.analysis_status === 'running'
   const failed = video.analysis_status === 'failed'
   return (
-    <li className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+    <li className="card flex items-start gap-3 p-4">
       <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-white/6 text-ink-300">
         <Clapperboard className="size-5" />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate font-medium">{video.title}</p>
+        <p className="line-clamp-2 text-sm font-medium" title={video.title ?? undefined}>{video.title}</p>
         <p className="mt-0.5 text-xs text-ink-500">
           {video.duration_seconds ? formatDuration(video.duration_seconds) : 'Uploaded'}
           {clip?.preset && ` · ${cartoonStyle(clip.preset)?.label ?? clip.preset}`} · {new Date(video.created_at).toLocaleDateString()}
         </p>
         {busy ? (
-          <div className="mt-3 max-w-md">
+          <div className="mt-3">
             <JobProgress job={job} fallback={video.analysis_message} />
           </div>
         ) : (
@@ -70,10 +70,11 @@ function UploadRow({
         )}
       </div>
       {!busy && (
-        <div className="flex shrink-0 items-center gap-1 self-start sm:self-center">
+        <div className="flex shrink-0 items-center gap-1">
           {failed && (
-            <ActionButton size="sm" variant="secondary" onClick={onRetry} loading={retrying}>
-              <RotateCcw className="size-3.5" /> Retry
+            <ActionButton size="sm" variant="secondary" onClick={onRetry} loading={retrying} title="Try again">
+              <RotateCcw className="size-3.5" />
+              <span className="sr-only">Retry</span>
             </ActionButton>
           )}
           <button
@@ -410,7 +411,7 @@ export default function Animate() {
         <section>
           <h2 className="font-display text-xl font-bold">Uploads</h2>
           {uploads.data?.length ? (
-            <ul className="mt-4 space-y-3">
+            <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {uploads.data.map((v) => (
                 <UploadRow
                   key={v.id}

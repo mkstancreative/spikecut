@@ -1,6 +1,6 @@
 import { Film, Link2, LoaderCircle, Sparkles, Square, Trash2, UploadCloud, Wand2, X } from 'lucide-react'
-import { useId, useRef, useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { ClipPlayer, JobProgress } from '@/components/app/ClipCard'
 import { ScheduleDialog } from '@/components/app/ScheduleDialog'
 import { EmptyState } from '@/components/app/EmptyState'
@@ -121,6 +121,7 @@ function VideoRow({
   onCartoonify,
   onDelete,
   deleting,
+  highlighted,
 }: {
   video: AnalyzableVideo
   creatorName?: string
@@ -142,6 +143,7 @@ function VideoRow({
   onCartoonify: () => void
   onDelete?: () => void
   deleting: boolean
+  highlighted: boolean
 }) {
   const confirm = useConfirm()
   const listId = useId()
@@ -152,7 +154,7 @@ function VideoRow({
   const tooLong = secs != null && secs > MAX_CARTOON_SECONDS
   const cartooning = cartoon?.analysis_status === 'queued' || cartoon?.analysis_status === 'running'
   return (
-    <li className="card overflow-hidden">
+    <li id={`video-${video.id}`} className={cn('card scroll-mt-24 overflow-hidden transition-shadow', highlighted && 'ring-2 ring-spike')}>
       <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
         <a
           // Uploaded files live in private storage — only links open anywhere.
@@ -373,12 +375,24 @@ export default function Clips() {
   const toggleVideo = (id: string) =>
     setFoldedVideos((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   const { analyze, stopAnalyze, render, deleteClip, dismissMoment, clearMoments } = useClipActions()
+  // "Find moments" on the Creators page lands here as ?video=<id>: show that video, scroll to it, highlight it briefly.
+  const [params, setParams] = useSearchParams()
+  const focusId = params.get('video')
+  const focusReady = !!focusId && !!videos.data?.some((v) => v.id === focusId)
+  useEffect(() => {
+    if (!focusReady) return
+    document.getElementById(`video-${focusId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const t = setTimeout(() => setParams((p) => (p.delete('video'), p), { replace: true }), 4000)
+    return () => clearTimeout(t)
+  }, [focusReady, focusId, setParams])
 
   const creatorName = new Map(creators.data?.map((c) => [c.id, c.display_name]))
   // Newest cartoon per source video (the list is newest first).
   const cartoonBySource = new Map<string, UploadedVideo>()
   for (const t of cartoons.data ?? []) if (t.source_stream_id && !cartoonBySource.has(t.source_stream_id)) cartoonBySource.set(t.source_stream_id, t)
-  const shown = (videos.data ?? []).filter((v) => (filter === 'all' ? true : filter === 'creators' ? !!v.creator_id : !v.creator_id))
+  const activeFilter: Filter = focusId ? 'all' : filter
+  const showScan = scanOpen || !!focusId
+  const shown = (videos.data ?? []).filter((v) => (activeFilter === 'all' ? true : activeFilter === 'creators' ? !!v.creator_id : !v.creator_id))
   const momentById = new Map(moments.data?.map((m) => [m.id, m]))
   const momentsByVideo = new Map<string, Moment[]>()
   for (const m of moments.data ?? []) momentsByVideo.set(m.stream_id, [...(momentsByVideo.get(m.stream_id) ?? []), m])
@@ -391,7 +405,7 @@ export default function Clips() {
     <>
       <PageHeader
         title="Clips"
-        description={`All your videos in one place — find the best moments for clips, or cartoonify them · ${ent.data?.credits ?? '—'} credits left`}
+        description={`Find the best moments in a video, then turn them into clips · ${ent.data?.credits ?? '—'} credits left`}
       />
       <div className="space-y-10 p-4 sm:p-8">
         {publishing && wsId && (
@@ -429,13 +443,13 @@ export default function Clips() {
         )}
 
         <CollapsibleSection
-          title="Your videos"
+          title="Find moments"
           count={videos.data?.length}
-          open={scanOpen}
+          open={showScan}
           onToggle={() => setScanOpen(!scanOpen)}
-          description="Find moments: SpikeCut transcribes the video and scores every stretch for energy, hooks and pace — free, then each clip you make uses 1 credit. Cartoonify: redraws the whole video in a style you pick."
+          description="Press Find moments on a video — SpikeCut scores every stretch for energy, hooks and pace (free). Then press Make clip on a moment to turn it into a vertical clip (1 credit). Finished clips appear in Your clips above. Cartoonify sends the video to Animate instead."
           actions={
-            scanOpen &&
+            showScan &&
             videosWithMoments.length > 0 && (
               <button
                 type="button"
@@ -455,9 +469,9 @@ export default function Clips() {
                   key={id}
                   type="button"
                   role="tab"
-                  aria-selected={filter === id}
+                  aria-selected={activeFilter === id}
                   onClick={() => setFilter(id)}
-                  className={cn('rounded-lg px-3 py-1.5 text-sm', filter === id ? 'bg-spike/15 text-spike' : 'text-ink-400 hover:text-ink-100')}
+                  className={cn('rounded-lg px-3 py-1.5 text-sm', activeFilter === id ? 'bg-spike/15 text-spike' : 'text-ink-400 hover:text-ink-100')}
                 >
                   {label}
                 </button>
@@ -487,7 +501,8 @@ export default function Clips() {
                   onDismiss={(id) => dismissMoment.mutate(id)}
                   onClear={() => clearMoments.mutate(v.id)}
                   clearing={clearMoments.isPending && clearMoments.variables === v.id}
-                  folded={foldedVideos.includes(v.id)}
+                  folded={foldedVideos.includes(v.id) && v.id !== focusId}
+                  highlighted={v.id === focusId}
                   onToggleFold={() => toggleVideo(v.id)}
                 />
               ))}

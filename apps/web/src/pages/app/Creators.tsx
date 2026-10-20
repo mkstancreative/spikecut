@@ -181,7 +181,7 @@ export default function Creators() {
                     <VideoActions
                       stream={s}
                       finding={analyze.isPending && analyze.variables === s.id}
-                      onFind={() => analyze.mutate(s.id, { onSuccess: () => navigate('/app/clips') })}
+                      onFind={() => analyze.mutate(s.id, { onSuccess: () => navigate(`/app/clips?video=${s.id}`) })}
                       onCartoonify={() => navigate(`/app/animate?video=${s.id}`)}
                     />
                   </StreamCard>
