@@ -1,5 +1,5 @@
 import { Hono, type Context } from 'hono'
-import { cartoonStyle, MAX_DETAILS_CHARS } from '../src/lib/animatePresets'
+import { cartoonStyle, MAX_CARTOON_SECONDS, MAX_DETAILS_CHARS } from '../src/lib/animatePresets'
 import { getPlan, type Currency } from '../src/lib/pricing'
 import { getEntitlements } from './entitlements'
 import {
@@ -197,11 +197,11 @@ app.post('/streams/:id/analyze', async (c) => {
   const db = supabaseAdmin()
   const { data: stream, error: lookupErr } = await db
     .from('streams')
-    .select('id, workspace_id, status, duration_seconds, analysis_status')
+    .select('id, workspace_id, status, duration_seconds, analysis_status, role')
     .eq('id', c.req.param('id'))
     .maybeSingle()
   if (lookupErr) throw lookupErr // e.g. a missing migration — don't disguise it as "not found"
-  if (!stream) throw new BillingError('Video not found', 404)
+  if (!stream || stream.role === 'cartoon') throw new BillingError('Video not found', 404)
   await requireMember(user.id, stream.workspace_id)
   await requireActivePlan(stream.workspace_id)
 
@@ -280,7 +280,41 @@ function checkStyle(styleId: unknown) {
   return style
 }
 
-// The browser has already uploaded the file into uploads/<workspaceId>/…; register it and queue the cartoon.
+type CartoonChoice = { style: string; details?: string }
+
+/** A style from the request, or none when the video is only being added to the library. */
+function cartoonChoice(body: { style?: string; details?: string }): CartoonChoice | null {
+  if (!body.style) return null
+  const style = checkStyle(body.style)
+  const details = style.engine === 'fal' ? body.details?.trim().slice(0, MAX_DETAILS_CHARS) || undefined : undefined
+  return { style: style.id, details }
+}
+
+type SourceVideo = { workspaceId: string; title: string; url: string; sourcePath: string | null; platform: 'upload' | 'link' }
+
+/** One of your own videos in the library, ready to find moments in or cartoonify. */
+async function addSourceVideo(v: SourceVideo) {
+  const id = crypto.randomUUID()
+  const { error } = await supabaseAdmin().from('streams').insert({
+    id,
+    workspace_id: v.workspaceId,
+    creator_id: null,
+    role: 'source',
+    platform: v.platform,
+    external_id: id,
+    kind: 'upload',
+    status: 'available',
+    title: v.title,
+    url: v.url,
+    source_path: v.sourcePath,
+    published_at: new Date().toISOString(),
+    analysis_status: 'none',
+  })
+  if (error) throw error
+  return id
+}
+
+// The browser has already uploaded the file into uploads/<workspaceId>/…; add it to the library, and cartoonify it if a style was picked.
 app.post('/uploads', async (c) => {
   const user = await requireUser(c)
   const body = await c.req.json<{ workspaceId?: string; path?: string; title?: string; style?: string; details?: string }>()
@@ -288,8 +322,7 @@ app.post('/uploads', async (c) => {
   if (!workspaceId || !path) throw new BillingError('Missing upload')
   await requireMember(user.id, workspaceId)
   await requireActivePlan(workspaceId)
-  const style = checkStyle(body.style)
-  const details = style.engine === 'fal' ? body.details?.trim().slice(0, MAX_DETAILS_CHARS) || undefined : undefined
+  const choice = cartoonChoice(body)
 
   const [folder, name, ...rest] = path.split('/')
   if (folder !== workspaceId || !name || rest.length) throw new BillingError('That upload belongs to another workspace', 403)
@@ -298,26 +331,21 @@ app.post('/uploads', async (c) => {
   if (listErr) throw listErr
   if (!found?.some((f) => f.name === name)) throw new BillingError('Upload not found — try uploading again', 404)
 
-  const title = body.title?.trim().slice(0, 200) || 'Untitled upload'
-  return c.json({ id: await queueCartoon({ workspaceId, title, url: path, sourcePath: path, platform: 'upload', style: style.id, details }) })
+  const video = { workspaceId, title: body.title?.trim().slice(0, 200) || 'Untitled upload', url: path, sourcePath: path, platform: 'upload' as const }
+  const id = await addSourceVideo(video)
+  return c.json({ id, cartoonId: choice ? await queueCartoon({ ...video, ...choice, sourceStreamId: id }) : null })
 })
 
-/** An Animate upload is a creator-less stream; the cartoonify job takes it from there. */
-async function queueCartoon(v: {
-  workspaceId: string
-  title: string
-  url: string
-  sourcePath: string | null
-  platform: 'upload' | 'link'
-  style: string
-  details?: string
-}) {
+/** A cartoon is its own stream pointing back at the video it was made from; the cartoonify job takes it from there. */
+async function queueCartoon(v: SourceVideo & CartoonChoice & { sourceStreamId: string }) {
   const db = supabaseAdmin()
   const id = crypto.randomUUID()
   const { error } = await db.from('streams').insert({
     id,
     workspace_id: v.workspaceId,
     creator_id: null,
+    role: 'cartoon',
+    source_stream_id: v.sourceStreamId,
     platform: v.platform,
     external_id: id,
     kind: 'upload',
@@ -366,28 +394,61 @@ app.post('/uploads/link', async (c) => {
   await requireMember(user.id, workspaceId)
   await requireActivePlan(workspaceId)
   const url = publicVideoUrl(body.url)
-  const style = checkStyle(body.style)
-  const details = style.engine === 'fal' ? body.details?.trim().slice(0, MAX_DETAILS_CHARS) || undefined : undefined
+  const choice = cartoonChoice(body)
   // The worker replaces this with the post's real title once it has looked the link up.
   const title = `Video from ${url.hostname.replace(/^(www|m|vm|vt)\./, '')}`
-  return c.json({ id: await queueCartoon({ workspaceId, title, url: url.toString(), sourcePath: null, platform: 'link', style: style.id, details }) })
+  const video = { workspaceId, title, url: url.toString(), sourcePath: null, platform: 'link' as const }
+  const id = await addSourceVideo(video)
+  return c.json({ id, cartoonId: choice ? await queueCartoon({ ...video, ...choice, sourceStreamId: id }) : null })
 })
 
-// Try a failed upload again, with the same style unless another is given. Credits were refunded on failure.
+// Cartoonify any video in the library — a creator's or your own.
+app.post('/streams/:id/cartoonify', async (c) => {
+  const user = await requireUser(c)
+  const body = await c.req.json<{ style?: string; details?: string }>().catch(() => ({}) as { style?: string; details?: string })
+  const db = supabaseAdmin()
+  const { data: stream, error } = await db
+    .from('streams')
+    .select('id, workspace_id, role, status, title, url, source_path, duration_seconds')
+    .eq('id', c.req.param('id'))
+    .maybeSingle()
+  if (error) throw error
+  if (!stream || stream.role !== 'source') throw new BillingError('Video not found', 404)
+  await requireMember(user.id, stream.workspace_id)
+  await requireActivePlan(stream.workspace_id)
+  if (stream.status === 'live' || stream.status === 'upcoming') throw new BillingError('Wait for the stream to finish first')
+  if (stream.duration_seconds != null && stream.duration_seconds > MAX_CARTOON_SECONDS) {
+    throw new BillingError(`Videos can be up to ${MAX_CARTOON_SECONDS / 60} minutes to cartoonify`)
+  }
+  const choice = cartoonChoice(body)
+  if (!choice) throw new BillingError('Pick a style first')
+  const id = await queueCartoon({
+    workspaceId: stream.workspace_id,
+    title: stream.title ?? 'Untitled video',
+    url: stream.url,
+    sourcePath: stream.source_path,
+    platform: stream.source_path ? 'upload' : 'link',
+    ...choice,
+    sourceStreamId: stream.id,
+  })
+  return c.json({ id })
+})
+
+// Try a failed cartoon again, with the same style unless another is given. Credits were refunded on failure.
 app.post('/uploads/:id/retry', async (c) => {
   const user = await requireUser(c)
   const body = await c.req.json<{ style?: string }>().catch(() => ({}) as { style?: string })
   const db = supabaseAdmin()
   const { data: stream, error } = await db
     .from('streams')
-    .select('id, workspace_id, kind, analysis_status')
+    .select('id, workspace_id, role, analysis_status')
     .eq('id', c.req.param('id'))
     .maybeSingle()
   if (error) throw error
-  if (!stream || stream.kind !== 'upload') throw new BillingError('Upload not found', 404)
+  if (!stream || stream.role !== 'cartoon') throw new BillingError('Cartoon not found', 404)
   await requireMember(user.id, stream.workspace_id)
   await requireActivePlan(stream.workspace_id)
-  if (stream.analysis_status !== 'failed') throw new BillingError('Only failed uploads can be retried', 409)
+  if (stream.analysis_status !== 'failed') throw new BillingError('Only failed cartoons can be retried', 409)
 
   const { data: last } = await db
     .from('jobs')
@@ -407,22 +468,29 @@ app.post('/uploads/:id/retry', async (c) => {
   return c.json({ ok: true })
 })
 
+// Delete one of your own videos (with its cartoons) or a single cartoon. Creators' videos come and go with the creator.
 app.delete('/uploads/:id', async (c) => {
   const user = await requireUser(c)
   const db = supabaseAdmin()
   const { data: stream, error } = await db
     .from('streams')
-    .select('id, workspace_id, kind, source_path, analysis_status')
+    .select('id, workspace_id, creator_id, source_path, analysis_status')
     .eq('id', c.req.param('id'))
     .maybeSingle()
   if (error) throw error
-  if (!stream || stream.kind !== 'upload') throw new BillingError('Upload not found', 404)
+  if (!stream || stream.creator_id) throw new BillingError('Upload not found', 404)
   await requireMember(user.id, stream.workspace_id)
-  if (stream.analysis_status === 'running') throw new BillingError('Wait for the scan to finish first', 409)
 
-  const { data: clips, error: clipErr } = await db.from('clips').select('id, status, video_path, thumbnail_path').eq('stream_id', stream.id)
+  // This video plus any cartoons made from it — they go together.
+  const { data: children, error: childErr } = await db.from('streams').select('id, analysis_status').eq('source_stream_id', stream.id)
+  if (childErr) throw childErr
+  const all = [stream, ...(children ?? [])]
+  const ids = all.map((s) => s.id)
+  if (all.some((s) => s.analysis_status === 'running')) throw new BillingError('Wait for the scan or cartoon to finish first', 409)
+
+  const { data: clips, error: clipErr } = await db.from('clips').select('id, status, video_path, thumbnail_path').in('stream_id', ids)
   if (clipErr) throw clipErr
-  if (clips?.some((cl) => cl.status === 'rendering')) throw new BillingError('Wait for the animation to finish first', 409)
+  if (clips?.some((cl) => cl.status === 'rendering')) throw new BillingError('Wait for the clip or cartoon to finish first', 409)
   const { count: posting } = await db
     .from('publications')
     .select('id', { count: 'exact', head: true })
@@ -435,11 +503,20 @@ app.delete('/uploads/:id', async (c) => {
     const { error: rmErr } = await db.storage.from('clips').remove(clipFiles)
     if (rmErr) throw rmErr
   }
+  // The uploaded file is shared between a video and its cartoons — only remove it when nothing else still uses it.
   if (stream.source_path) {
-    const { error: rmErr } = await db.storage.from('uploads').remove([stream.source_path])
-    if (rmErr) throw rmErr
+    const { count: sharing, error: shareErr } = await db
+      .from('streams')
+      .select('id', { count: 'exact', head: true })
+      .eq('source_path', stream.source_path)
+      .not('id', 'in', `(${ids.join(',')})`)
+    if (shareErr) throw shareErr
+    if (!sharing) {
+      const { error: rmErr } = await db.storage.from('uploads').remove([stream.source_path])
+      if (rmErr) throw rmErr
+    }
   }
-  // Moments, clips and their posts go with it (FK cascade).
+  // Moments, clips, cartoons and their posts go with it (FK cascade).
   const { error: delErr } = await db.from('streams').delete().eq('id', stream.id)
   if (delErr) throw delErr
   return c.json({ ok: true })

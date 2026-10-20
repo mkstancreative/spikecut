@@ -3,9 +3,14 @@ import { api } from './api'
 import type { Stream } from './creators'
 import { supabase } from './supabase'
 
-export type AnalyzableVideo = Stream & {
+export type AnalyzableVideo = Omit<Stream, 'creator_id'> & {
+  creator_id: string | null // null for your own uploads and links
+  role: 'source' | 'cartoon' // cartoons point back at the video they were made from
+  source_stream_id: string | null
+  source_path: string | null
   analysis_status: 'none' | 'queued' | 'running' | 'done' | 'failed'
   analysis_message: string | null
+  created_at: string
 }
 
 export type Moment = {
@@ -72,7 +77,7 @@ export function useActiveJobs(workspaceId: string | undefined) {
 
 const busy = (v: AnalyzableVideo) => v.analysis_status === 'queued' || v.analysis_status === 'running'
 
-// Poll quickly while the worker is busy, slowly otherwise.
+/** The video library: creators' videos and your own uploads. Polls quickly while the worker is busy. */
 export function useVideos(workspaceId: string | undefined) {
   return useQuery({
     queryKey: ['videos', workspaceId],
@@ -83,11 +88,10 @@ export function useVideos(workspaceId: string | undefined) {
         .from('streams')
         .select('*')
         .eq('workspace_id', workspaceId!)
+        .eq('role', 'source')
         .in('status', ['available', 'ended'])
-        .neq('kind', 'upload') // the user's own uploads live on the Animate page
-        .or('duration_seconds.is.null,duration_seconds.gte.60')
         .order('published_at', { ascending: false })
-        .limit(40)
+        .limit(60)
       if (error) throw error
       return data as AnalyzableVideo[]
     },

@@ -1,5 +1,6 @@
-import { Film, LoaderCircle, Sparkles, Square, Trash2, Wand2, X } from 'lucide-react'
-import { useId, useState } from 'react'
+import { Film, Link2, LoaderCircle, Sparkles, Square, Trash2, UploadCloud, Wand2, X } from 'lucide-react'
+import { useId, useRef, useState, type FormEvent } from 'react'
+import { Link, useNavigate } from 'react-router'
 import { ClipPlayer, JobProgress } from '@/components/app/ClipCard'
 import { ScheduleDialog } from '@/components/app/ScheduleDialog'
 import { EmptyState } from '@/components/app/EmptyState'
@@ -8,7 +9,9 @@ import { ActionButton } from '@/components/ui/ActionButton'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { Button } from '@/components/ui/Button'
 import { CollapsibleSection, FoldToggle } from '@/components/ui/Collapsible'
-import { Alert } from '@/components/ui/Field'
+import { Alert, inputClasses } from '@/components/ui/Field'
+import { useUploads, useVideoActions, type UploadedVideo } from '@/lib/animate'
+import { MAX_CARTOON_SECONDS } from '@/lib/animatePresets'
 import {
   formatTimestamp,
   useActiveJobs,
@@ -114,6 +117,10 @@ function VideoRow({
   clearing,
   folded,
   onToggleFold,
+  cartoon,
+  onCartoonify,
+  onDelete,
+  deleting,
 }: {
   video: AnalyzableVideo
   creatorName?: string
@@ -131,16 +138,34 @@ function VideoRow({
   clearing: boolean
   folded: boolean
   onToggleFold: () => void
+  cartoon?: UploadedVideo
+  onCartoonify: () => void
+  onDelete?: () => void
+  deleting: boolean
 }) {
   const confirm = useConfirm()
   const listId = useId()
   const busy = video.analysis_status === 'queued' || video.analysis_status === 'running'
   const unused = moments.filter((m) => m.status === 'detected' || m.status === 'failed').length
+  const secs = video.duration_seconds
+  const tooShort = secs != null && secs < 60
+  const tooLong = secs != null && secs > MAX_CARTOON_SECONDS
+  const cartooning = cartoon?.analysis_status === 'queued' || cartoon?.analysis_status === 'running'
   return (
     <li className="card overflow-hidden">
       <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
-        <a href={video.url} target="_blank" rel="noreferrer" className="relative aspect-video w-full shrink-0 overflow-hidden rounded-lg bg-ink-850 sm:w-44">
-          {video.thumbnail_url && <img src={video.thumbnail_url} alt="" loading="lazy" className="size-full object-cover" />}
+        <a
+          // Uploaded files live in private storage — only links open anywhere.
+          href={video.source_path ? undefined : video.url}
+          target="_blank"
+          rel="noreferrer"
+          className="relative flex aspect-video w-full shrink-0 items-center justify-center overflow-hidden rounded-lg bg-ink-850 sm:w-44"
+        >
+          {video.thumbnail_url ? (
+            <img src={video.thumbnail_url} alt="" loading="lazy" className="size-full object-cover" />
+          ) : (
+            <Film className="size-6 text-ink-600" />
+          )}
           {video.duration_seconds ? (
             <span className="absolute right-1.5 bottom-1.5 rounded bg-black/70 px-1 font-mono text-[10px] text-white">
               {formatDuration(video.duration_seconds)}
@@ -150,6 +175,15 @@ function VideoRow({
         <div className="min-w-0 flex-1">
           <p className="line-clamp-2 font-medium">{video.title}</p>
           <p className="mt-1 text-xs text-ink-500">{creatorName}</p>
+          {cartoon && (
+            <p className={cn('mt-1.5 text-xs', cartoon.analysis_status === 'failed' ? 'text-cut' : cartoon.analysis_status === 'done' ? 'text-spike' : 'text-signal')}>
+              <Wand2 className="mr-1 inline size-3" />
+              Cartoon: {cartoon.analysis_message ?? 'Waiting for the worker'} ·{' '}
+              <Link to="/app/animate" className="underline">
+                {cartoon.analysis_status === 'done' ? 'see it' : 'details'}
+              </Link>
+            </p>
+          )}
           {busy ? (
             <div className="mt-3 max-w-md">
               <JobProgress job={jobs.get(video.id)} fallback={video.analysis_message} />
@@ -165,22 +199,53 @@ function VideoRow({
             </p>
           )}
         </div>
-        {busy ? (
-          <ActionButton size="sm" variant="secondary" onClick={onStop} loading={stopping} className="shrink-0 text-cut">
-            <Square className="size-3" /> Stop
-          </ActionButton>
-        ) : (
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {busy ? (
+            <ActionButton size="sm" variant="secondary" onClick={onStop} loading={stopping} className="text-cut">
+              <Square className="size-3" /> Stop
+            </ActionButton>
+          ) : (
+            <ActionButton
+              size="sm"
+              variant={video.analysis_status === 'done' ? 'secondary' : 'primary'}
+              onClick={onAnalyze}
+              loading={analyzing}
+              disabled={tooShort}
+              title={tooShort ? 'Under a minute — too short to find moments in' : 'Find the best moments and make clips'}
+            >
+              <Sparkles className="size-3.5" />
+              {video.analysis_status === 'done' || video.analysis_status === 'failed' ? 'Re-scan' : 'Find moments'}
+            </ActionButton>
+          )}
           <ActionButton
             size="sm"
-            variant={video.analysis_status === 'done' ? 'secondary' : 'primary'}
-            onClick={onAnalyze}
-            loading={analyzing}
-            className="shrink-0"
+            variant="secondary"
+            onClick={onCartoonify}
+            disabled={tooLong || cartooning}
+            title={tooLong ? `Longer than ${MAX_CARTOON_SECONDS / 60} minutes — too long to cartoonify` : 'Turn this video into a cartoon'}
           >
-            <Sparkles className="size-3.5" />
-            {video.analysis_status === 'done' || video.analysis_status === 'failed' ? 'Re-scan' : 'Find moments'}
+            <Wand2 className="size-3.5" /> Cartoonify
           </ActionButton>
-        )}
+          {onDelete && (
+            <button
+              type="button"
+              disabled={deleting || busy}
+              title="Delete this video"
+              onClick={async () => {
+                const ok = await confirm({
+                  title: 'Delete this video?',
+                  body: 'The video, its moments, clips and cartoons are removed from your workspace.',
+                  confirmLabel: 'Delete video',
+                  tone: 'danger',
+                })
+                if (ok) onDelete()
+              }}
+              className="rounded-lg p-2 text-ink-500 hover:bg-cut/10 hover:text-cut disabled:opacity-50"
+            >
+              {deleting ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+            </button>
+          )}
+        </div>
       </div>
       {!!moments.length && (
         <div className={cn('border-t border-white/6 px-4', folded ? 'py-2.5' : 'pt-3 pb-4')}>
@@ -229,6 +294,64 @@ function VideoRow({
   )
 }
 
+/** Add one of your own videos to the library — a file from your device or a link to a public post. */
+function AddVideo({ workspaceId }: { workspaceId: string }) {
+  const { addFile, addLink, uploadPct } = useVideoActions(workspaceId)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const [link, setLink] = useState('')
+  const error = (addFile.error ?? addLink.error) as Error | null
+
+  function submitLink(e: FormEvent) {
+    e.preventDefault()
+    if (link.trim()) addLink.mutate(link.trim(), { onSuccess: () => setLink('') })
+  }
+  return (
+    <div className="mt-4 space-y-2">
+      <div className="card flex flex-col gap-2 p-3 sm:flex-row">
+        <form onSubmit={submitLink} className="flex flex-1 gap-2">
+          <div className="relative flex-1">
+            <Link2 className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-500" />
+            <input
+              type="url"
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+              placeholder="Paste a link — TikTok, Instagram, YouTube, X…"
+              aria-label="Video link"
+              className={cn(inputClasses, 'pl-9')}
+            />
+          </div>
+          <ActionButton type="submit" variant="secondary" loading={addLink.isPending} disabled={!link.trim()}>
+            Add
+          </ActionButton>
+        </form>
+        <input
+          ref={fileInput}
+          type="file"
+          accept="video/*,.mp4,.mov,.webm,.mkv,.m4v"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            e.target.value = ''
+            if (file) addFile.mutate(file)
+          }}
+        />
+        <ActionButton variant="secondary" loading={addFile.isPending} onClick={() => fileInput.current?.click()}>
+          <UploadCloud className="size-4" />
+          {uploadPct != null ? `Uploading · ${Math.round(uploadPct)}%` : 'Upload a video'}
+        </ActionButton>
+      </div>
+      {error && <Alert>{error.message}</Alert>}
+    </div>
+  )
+}
+
+type Filter = 'all' | 'creators' | 'mine'
+const filters: [Filter, string][] = [
+  ['all', 'All'],
+  ['creators', 'Creators'],
+  ['mine', 'My uploads'],
+]
+
 export default function Clips() {
   const workspace = useWorkspace()
   const wsId = workspace.data?.id
@@ -238,7 +361,11 @@ export default function Clips() {
   const moments = useMoments(wsId)
   const clips = useClips(wsId, 'standard')
   const jobs = useActiveJobs(wsId)
+  const cartoons = useUploads(wsId)
+  const { remove } = useVideoActions(wsId)
   const [publishing, setPublishing] = useState<Clip | null>(null)
+  const navigate = useNavigate()
+  const [filter, setFilter] = usePersistentState<Filter>('spikecut:videos:filter', 'all')
   // Fold state is remembered per browser.
   const [clipsOpen, setClipsOpen] = usePersistentState('spikecut:clips:open', true)
   const [scanOpen, setScanOpen] = usePersistentState('spikecut:scan:open', true)
@@ -248,19 +375,23 @@ export default function Clips() {
   const { analyze, stopAnalyze, render, deleteClip, dismissMoment, clearMoments } = useClipActions()
 
   const creatorName = new Map(creators.data?.map((c) => [c.id, c.display_name]))
+  // Newest cartoon per source video (the list is newest first).
+  const cartoonBySource = new Map<string, UploadedVideo>()
+  for (const t of cartoons.data ?? []) if (t.source_stream_id && !cartoonBySource.has(t.source_stream_id)) cartoonBySource.set(t.source_stream_id, t)
+  const shown = (videos.data ?? []).filter((v) => (filter === 'all' ? true : filter === 'creators' ? !!v.creator_id : !v.creator_id))
   const momentById = new Map(moments.data?.map((m) => [m.id, m]))
   const momentsByVideo = new Map<string, Moment[]>()
   for (const m of moments.data ?? []) momentsByVideo.set(m.stream_id, [...(momentsByVideo.get(m.stream_id) ?? []), m])
   const outOfCredits = (ent.data?.credits ?? 0) < 1
   const videosWithMoments = (videos.data ?? []).filter((v) => momentsByVideo.has(v.id)).map((v) => v.id)
   const allFolded = videosWithMoments.length > 0 && videosWithMoments.every((id) => foldedVideos.includes(id))
-  const error = (analyze.error ?? stopAnalyze.error ?? render.error ?? deleteClip.error ?? dismissMoment.error ?? clearMoments.error) as Error | null
+  const error = (analyze.error ?? stopAnalyze.error ?? render.error ?? deleteClip.error ?? dismissMoment.error ?? clearMoments.error ?? remove.error) as Error | null
 
   return (
     <>
       <PageHeader
         title="Clips"
-        description={`Find the best moments in your creators’ videos and turn them into vertical clips · ${ent.data?.credits ?? '—'} credits left`}
+        description={`All your videos in one place — find the best moments for clips, or cartoonify them · ${ent.data?.credits ?? '—'} credits left`}
       />
       <div className="space-y-10 p-4 sm:p-8">
         {publishing && wsId && (
@@ -298,11 +429,11 @@ export default function Clips() {
         )}
 
         <CollapsibleSection
-          title="Find moments"
+          title="Your videos"
           count={videos.data?.length}
           open={scanOpen}
           onToggle={() => setScanOpen(!scanOpen)}
-          description="SpikeCut transcribes the video and scores every stretch for energy, hooks and pace. Finding moments is free — each clip you make uses 1 credit."
+          description="Find moments: SpikeCut transcribes the video and scores every stretch for energy, hooks and pace — free, then each clip you make uses 1 credit. Cartoonify: redraws the whole video in a style you pick."
           actions={
             scanOpen &&
             videosWithMoments.length > 0 && (
@@ -316,13 +447,34 @@ export default function Clips() {
             )
           }
         >
-          {videos.data?.length ? (
+          {wsId && <AddVideo workspaceId={wsId} />}
+          {!!videos.data?.length && (
+            <div role="tablist" aria-label="Show videos from" className="mt-4 inline-flex rounded-xl border border-white/10 p-1">
+              {filters.map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={filter === id}
+                  onClick={() => setFilter(id)}
+                  className={cn('rounded-lg px-3 py-1.5 text-sm', filter === id ? 'bg-spike/15 text-spike' : 'text-ink-400 hover:text-ink-100')}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {shown.length ? (
             <ul className="mt-4 space-y-4">
-              {videos.data.map((v) => (
+              {shown.map((v) => (
                 <VideoRow
                   key={v.id}
                   video={v}
-                  creatorName={creatorName.get(v.creator_id)}
+                  creatorName={v.creator_id ? creatorName.get(v.creator_id) : v.source_path ? 'Your upload' : 'Pasted link'}
+                  cartoon={cartoonBySource.get(v.id)}
+                  onCartoonify={() => navigate(`/app/animate?video=${v.id}`)}
+                  onDelete={v.creator_id ? undefined : () => remove.mutate(v.id)}
+                  deleting={remove.isPending && remove.variables === v.id}
                   moments={momentsByVideo.get(v.id) ?? []}
                   onAnalyze={() => analyze.mutate(v.id)}
                   onStop={() => stopAnalyze.mutate(v.id)}
@@ -345,8 +497,8 @@ export default function Clips() {
               <div className="mt-4">
                 <EmptyState
                   icon={Film}
-                  title="No videos to clip yet"
-                  body="Add a creator and their latest videos and past streams will appear here, ready to scan for moments."
+                  title={videos.data?.length ? 'Nothing here yet' : 'No videos yet'}
+                  body="Upload a video or paste a link above, or add a creator — their latest videos and past streams appear here automatically."
                   action={<Button to="/app/creators">Add a creator</Button>}
                 />
               </div>

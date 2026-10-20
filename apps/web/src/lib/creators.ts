@@ -4,7 +4,7 @@ import { supabase } from './supabase'
 
 export type Creator = {
   id: string
-  platform: 'youtube' | 'twitch' | 'kick'
+  platform: 'youtube' | 'twitch' | 'kick' | 'tiktok' | 'instagram'
   channel_id: string
   handle: string | null
   display_name: string
@@ -58,7 +58,7 @@ export function useStreams(workspaceId: string | undefined, opts: { live?: boole
     enabled: !!workspaceId,
     refetchInterval: REFRESH_MS,
     queryFn: async () => {
-      let q = supabase.from('streams').select('*').eq('workspace_id', workspaceId!)
+      let q = supabase.from('streams').select('*').eq('workspace_id', workspaceId!).not('creator_id', 'is', null)
       q = opts.live ? q.eq('status', 'live') : q.neq('status', 'live')
       const { data, error } = await q.order('published_at', { ascending: false }).limit(opts.limit ?? 50)
       if (error) throw error
@@ -93,6 +93,8 @@ export const platformMeta: Record<Creator['platform'], { label: string; dot: str
   youtube: { label: 'YouTube', dot: 'bg-red-500' },
   twitch: { label: 'Twitch', dot: 'bg-violet-400' },
   kick: { label: 'Kick', dot: 'bg-lime-400' },
+  tiktok: { label: 'TikTok', dot: 'bg-cyan-400' },
+  instagram: { label: 'Instagram', dot: 'bg-pink-500' },
 }
 
 // Database rows arrive at runtime, so an unexpected platform value must not

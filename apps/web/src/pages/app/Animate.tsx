@@ -1,17 +1,18 @@
 import { Clapperboard, Film, Link2, LoaderCircle, RotateCcw, Sparkles, Trash2, UploadCloud, Wand2, X } from 'lucide-react'
 import { useRef, useState, type DragEvent, type FormEvent } from 'react'
+import { useLocation, useNavigate, useSearchParams } from 'react-router'
 import { ClipPlayer, JobProgress } from '@/components/app/ClipCard'
 import { EmptyState } from '@/components/app/EmptyState'
+import { StylePicker } from '@/components/app/StylePicker'
 import { ScheduleDialog } from '@/components/app/ScheduleDialog'
 import { PageHeader } from '@/components/layout/AppLayout'
 import { ActionButton } from '@/components/ui/ActionButton'
 import { CollapsibleSection } from '@/components/ui/Collapsible'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { Alert, inputClasses } from '@/components/ui/Field'
-import { readDuration, useAnimateActions, useCartoonEngines, useUploads, type UploadedVideo } from '@/lib/animate'
+import { readDuration, useAnimateActions, useCartoonEngines, useUploads, useVideo, useVideoActions, type UploadedVideo } from '@/lib/animate'
 import {
   cartoonStyle,
-  cartoonStyles,
   creditsFor,
   MAX_CARTOON_SECONDS,
   MAX_DETAILS_CHARS,
@@ -24,46 +25,6 @@ import { usePersistentState } from '@/lib/usePersistentState'
 import { useEntitlements, useWorkspace } from '@/lib/workspace'
 
 const credits = (n: number) => `${n} credit${n === 1 ? '' : 's'}`
-const costLabel = (id: CartoonStyleId) => (cartoonStyle(id)?.engine === 'fal' ? '1 credit / min' : '1 credit')
-
-function StylePicker({ value, onChange, falReady }: { value: CartoonStyleId; onChange: (id: CartoonStyleId) => void; falReady: boolean }) {
-  return (
-    <div role="radiogroup" aria-label="Cartoon style" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-      {cartoonStyles.map((s) => {
-        const unavailable = s.engine === 'fal' && !falReady
-        return (
-          <button
-            key={s.id}
-            type="button"
-            role="radio"
-            aria-checked={value === s.id}
-            disabled={unavailable}
-            onClick={() => onChange(s.id)}
-            className={cn(
-              'rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40',
-              value === s.id ? 'border-spike/60 bg-spike/10' : 'border-white/10 hover:bg-white/5',
-            )}
-          >
-            <span className="flex items-center justify-between gap-2 font-medium">
-              {s.label}
-              <span
-                className={cn(
-                  'rounded-full px-1.5 py-0.5 font-mono text-[9px] tracking-wider uppercase',
-                  s.engine === 'fal' ? 'bg-signal/15 text-signal' : 'bg-white/8 text-ink-300',
-                )}
-              >
-                {s.engine === 'fal' ? 'AI' : 'Free'}
-              </span>
-            </span>
-            <span className="mt-1 block text-xs text-ink-400">{unavailable ? 'Not set up on the server yet' : s.blurb}</span>
-            <span className="mt-1.5 block font-mono text-[10px] text-ink-500">{costLabel(s.id)}</span>
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
 function UploadRow({
   video,
   job,
@@ -158,6 +119,11 @@ export default function Animate() {
   const [source, setSource] = usePersistentState<'file' | 'link'>('spikecut:animate:source', 'file')
   const [link, setLink] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
+  // "Cartoonify" on the Creators or Clips page arrives here as ?video=<id>.
+  const [params, setParams] = useSearchParams()
+  const videoId = params.get('video')
+  const chosen = useVideo(videoId)
+  const { cartoonify } = useVideoActions(wsId)
 
   const falReady = !!engines.data?.fal
   // Fall back to the free filter when the AI styles aren't available on this server.
@@ -168,7 +134,21 @@ export default function Animate() {
   const clipByUpload = new Map(clips.data?.map((c) => [c.stream_id, c]))
   const titleByUpload = new Map(uploads.data?.map((u) => [u.id, u.title]))
   const uploading = upload.isPending
-  const error = (upload.error ?? fromLink.error ?? retry.error ?? remove.error ?? deleteClip.error) as Error | null
+  const chosenSecs = chosen.data?.duration_seconds ?? null
+  const chosenTooLong = chosenSecs != null && chosenSecs > MAX_CARTOON_SECONDS
+  const chosenCost = chosenSecs != null ? creditsFor(style, chosenSecs) : null
+  const chosenShort = (chosenCost ?? 1) > balance
+  const error = (upload.error ?? fromLink.error ?? cartoonify.error ?? retry.error ?? remove.error ?? deleteClip.error) as Error | null
+
+  const clearChosen = () => setParams((p) => (p.delete('video'), p), { replace: true })
+  const navigate = useNavigate()
+  const location = useLocation()
+  // Back to the Creators or Clips page the video was picked on; straight to Creators if the link was opened directly.
+  const pickAnother = () => (location.key === 'default' ? navigate('/app/creators') : navigate(-1))
+  function startChosen() {
+    if (!videoId) return
+    cartoonify.mutate({ streamId: videoId, style, details }, { onSuccess: clearChosen })
+  }
 
   async function pick(file: File | undefined) {
     if (!file || uploading) return
@@ -238,107 +218,154 @@ export default function Animate() {
             </div>
           )}
 
-          <div role="tablist" aria-label="Video source" className="inline-flex rounded-xl border border-white/10 p-1">
-            {(
-              [
-                ['file', 'Upload a file', UploadCloud],
-                ['link', 'Paste a link', Link2],
-              ] as const
-            ).map(([id, label, Icon]) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={source === id}
-                disabled={uploading}
-                onClick={() => setSource(id)}
-                className={cn(
-                  'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm',
-                  source === id ? 'bg-spike/15 text-spike' : 'text-ink-400 hover:text-ink-100',
+          {videoId ? (
+            <div className="flex flex-col gap-4 rounded-(--radius-card) border border-spike/30 bg-ink-850 p-4 sm:flex-row sm:items-center">
+              <div className="relative flex aspect-video w-full shrink-0 items-center justify-center overflow-hidden rounded-lg bg-ink-900 sm:w-40">
+                {chosen.data?.thumbnail_url ? (
+                  <img src={chosen.data.thumbnail_url} alt="" className="size-full object-cover" />
+                ) : (
+                  <Film className="size-6 text-ink-600" />
                 )}
-              >
-                <Icon className="size-4" /> {label}
-              </button>
-            ))}
-          </div>
-
-          {source === 'link' ? (
-            <form onSubmit={submitLink} className="space-y-2">
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <input
-                  type="url"
-                  required
-                  value={link}
-                  onChange={(e) => setLink(e.target.value)}
-                  placeholder="https://www.tiktok.com/@creator/video/…"
-                  aria-label="Video link"
-                  className={cn(inputClasses, 'flex-1')}
-                />
-                <ActionButton type="submit" loading={fromLink.isPending} disabled={balance < 1 || !link.trim()}>
+              </div>
+              <div className="min-w-0 flex-1">
+                {chosen.isPending ? (
+                  <p className="text-sm text-ink-400">Loading the video…</p>
+                ) : !chosen.data ? (
+                  <p className="text-sm text-cut">That video isn’t in your library any more.</p>
+                ) : (
+                  <>
+                    <p className="line-clamp-2 font-medium">{chosen.data.title ?? 'Untitled video'}</p>
+                    <p className="mt-0.5 text-sm text-ink-400">
+                      {chosen.data.creators?.display_name ?? (chosen.data.source_path ? 'Your upload' : 'Pasted link')}
+                      {chosen.data.duration_seconds ? ` · ${formatDuration(chosen.data.duration_seconds)}` : ''} · {cartoonStyle(style)?.label}
+                    </p>
+                    <p className={cn('mt-1 text-sm', chosenTooLong || chosenShort ? 'text-cut' : 'text-spike')}>
+                      {chosenTooLong
+                        ? `Longer than ${MAX_CARTOON_SECONDS / 60} minutes — too long to cartoonify`
+                        : chosenCost != null
+                          ? `Uses ${credits(chosenCost)}`
+                          : isAi
+                            ? 'Uses 1 credit per started minute'
+                            : 'Uses 1 credit'}
+                      {!chosenTooLong && chosenShort && ` — you have ${balance}. Top up first.`}
+                    </p>
+                  </>
+                )}
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <ActionButton variant="ghost" onClick={pickAnother} disabled={cartoonify.isPending}>
+                  Pick another
+                </ActionButton>
+                <ActionButton onClick={startChosen} loading={cartoonify.isPending} disabled={!chosen.data || chosenTooLong || chosenShort}>
                   <Wand2 className="size-4" /> Cartoonify
                 </ActionButton>
               </div>
-              <p className="text-xs text-ink-500">
-                TikTok, Instagram, Facebook, X, YouTube and most other sites. Public posts only, up to {MAX_CARTOON_SECONDS / 60} minutes ·{' '}
-                {isAi ? '1 credit per started minute, worked out once it’s downloaded' : '1 credit'}.
-              </p>
-            </form>
-          ) : picked ? (
-            <div className="flex flex-col gap-4 rounded-(--radius-card) border border-white/10 bg-ink-850 p-4 sm:flex-row sm:items-center">
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">{picked.file.name}</p>
-                <p className="mt-0.5 text-sm text-ink-400">
-                  {picked.seconds != null ? formatDuration(Math.round(picked.seconds)) : 'Length checked after upload'} ·{' '}
-                  {(picked.file.size / 1e6).toFixed(0)} MB · {cartoonStyle(style)?.label}
-                </p>
-                <p className={cn('mt-1 text-sm', cost != null && cost > balance ? 'text-cut' : 'text-spike')}>
-                  {cost != null ? `Uses ${credits(cost)}` : isAi ? 'Uses 1 credit per started minute' : 'Uses 1 credit'}
-                  {cost != null && cost > balance && ` — you have ${balance}. Top up first.`}
-                </p>
-                {uploading && (
-                  <div className="mt-3 max-w-sm">
-                    <div className="flex justify-between text-xs text-ink-300">
-                      <span>{uploadPct == null ? 'Queuing…' : 'Uploading'}</span>
-                      {uploadPct != null && <span className="font-mono">{Math.round(uploadPct)}%</span>}
-                    </div>
-                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/8">
-                      <div className="h-full rounded-full bg-spike transition-[width] duration-500" style={{ width: `${uploadPct ?? 100}%` }} />
-                    </div>
-                    <p className="mt-2 text-xs text-ink-500">Keep this tab open — if the connection drops, choosing the same file again resumes it.</p>
-                  </div>
-                )}
-              </div>
-              {!uploading && (
-                <div className="flex shrink-0 items-center gap-2">
-                  <button type="button" onClick={() => setPicked(null)} title="Choose another video" className="rounded-lg p-2 text-ink-400 hover:bg-white/5 hover:text-ink-100">
-                    <X className="size-4" />
-                  </button>
-                  <ActionButton onClick={start} disabled={cost != null ? cost > balance : balance < 1}>
+            </div>
+          ) : (
+            <>
+            <div role="tablist" aria-label="Video source" className="inline-flex rounded-xl border border-white/10 p-1">
+              {(
+                [
+                  ['file', 'Upload a file', UploadCloud],
+                  ['link', 'Paste a link', Link2],
+                ] as const
+              ).map(([id, label, Icon]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={source === id}
+                  disabled={uploading}
+                  onClick={() => setSource(id)}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm',
+                    source === id ? 'bg-spike/15 text-spike' : 'text-ink-400 hover:text-ink-100',
+                  )}
+                >
+                  <Icon className="size-4" /> {label}
+                </button>
+              ))}
+            </div>
+
+            {source === 'link' ? (
+              <form onSubmit={submitLink} className="space-y-2">
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    type="url"
+                    required
+                    value={link}
+                    onChange={(e) => setLink(e.target.value)}
+                    placeholder="https://www.tiktok.com/@creator/video/…"
+                    aria-label="Video link"
+                    className={cn(inputClasses, 'flex-1')}
+                  />
+                  <ActionButton type="submit" loading={fromLink.isPending} disabled={balance < 1 || !link.trim()}>
                     <Wand2 className="size-4" /> Cartoonify
                   </ActionButton>
                 </div>
-              )}
-            </div>
-          ) : (
-            <div
-              onDragOver={(e) => {
-                e.preventDefault()
-                setDragging(true)
-              }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={onDrop}
-              className={cn(
-                'flex flex-col items-center rounded-(--radius-card) border border-dashed px-6 py-10 text-center transition-colors',
-                dragging ? 'border-spike bg-spike/5' : 'border-white/15',
-              )}
-            >
-              <UploadCloud className="size-8 text-spike" />
-              <p className="mt-3 font-medium">Drop a video here</p>
-              <p className="mt-1 text-sm text-ink-400">MP4, MOV, WebM or MKV · up to {MAX_CARTOON_SECONDS / 60} min</p>
-              <ActionButton className="mt-4" size="sm" onClick={() => fileInput.current?.click()} disabled={balance < 1}>
-                Choose a video
-              </ActionButton>
-            </div>
+                <p className="text-xs text-ink-500">
+                  TikTok, Instagram, Facebook, X, YouTube and most other sites. Public posts only, up to {MAX_CARTOON_SECONDS / 60} minutes ·{' '}
+                  {isAi ? '1 credit per started minute, worked out once it’s downloaded' : '1 credit'}.
+                </p>
+              </form>
+            ) : picked ? (
+              <div className="flex flex-col gap-4 rounded-(--radius-card) border border-white/10 bg-ink-850 p-4 sm:flex-row sm:items-center">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{picked.file.name}</p>
+                  <p className="mt-0.5 text-sm text-ink-400">
+                    {picked.seconds != null ? formatDuration(Math.round(picked.seconds)) : 'Length checked after upload'} ·{' '}
+                    {(picked.file.size / 1e6).toFixed(0)} MB · {cartoonStyle(style)?.label}
+                  </p>
+                  <p className={cn('mt-1 text-sm', cost != null && cost > balance ? 'text-cut' : 'text-spike')}>
+                    {cost != null ? `Uses ${credits(cost)}` : isAi ? 'Uses 1 credit per started minute' : 'Uses 1 credit'}
+                    {cost != null && cost > balance && ` — you have ${balance}. Top up first.`}
+                  </p>
+                  {uploading && (
+                    <div className="mt-3 max-w-sm">
+                      <div className="flex justify-between text-xs text-ink-300">
+                        <span>{uploadPct == null ? 'Queuing…' : 'Uploading'}</span>
+                        {uploadPct != null && <span className="font-mono">{Math.round(uploadPct)}%</span>}
+                      </div>
+                      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/8">
+                        <div className="h-full rounded-full bg-spike transition-[width] duration-500" style={{ width: `${uploadPct ?? 100}%` }} />
+                      </div>
+                      <p className="mt-2 text-xs text-ink-500">Keep this tab open — if the connection drops, choosing the same file again resumes it.</p>
+                    </div>
+                  )}
+                </div>
+                {!uploading && (
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button type="button" onClick={() => setPicked(null)} title="Choose another video" className="rounded-lg p-2 text-ink-400 hover:bg-white/5 hover:text-ink-100">
+                      <X className="size-4" />
+                    </button>
+                    <ActionButton onClick={start} disabled={cost != null ? cost > balance : balance < 1}>
+                      <Wand2 className="size-4" /> Cartoonify
+                    </ActionButton>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  setDragging(true)
+                }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={onDrop}
+                className={cn(
+                  'flex flex-col items-center rounded-(--radius-card) border border-dashed px-6 py-10 text-center transition-colors',
+                  dragging ? 'border-spike bg-spike/5' : 'border-white/15',
+                )}
+              >
+                <UploadCloud className="size-8 text-spike" />
+                <p className="mt-3 font-medium">Drop a video here</p>
+                <p className="mt-1 text-sm text-ink-400">MP4, MOV, WebM or MKV · up to {MAX_CARTOON_SECONDS / 60} min</p>
+                <ActionButton className="mt-4" size="sm" onClick={() => fileInput.current?.click()} disabled={balance < 1}>
+                  Choose a video
+                </ActionButton>
+              </div>
+            )}
+            </>
           )}
           <input
             ref={fileInput}

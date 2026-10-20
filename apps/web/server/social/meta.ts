@@ -123,19 +123,45 @@ export async function publishInstagram(input: PublishInput): Promise<PublishResu
   return { postId: published.id, permalink: info.permalink ?? null }
 }
 
+/**
+ * Facebook Reels: start an upload session, have Meta pull the video from its URL, then publish.
+ * Unlike POST /{page}/videos this only needs pages_manage_posts (no publish_video, which Business Login apps can't get).
+ */
 export async function publishFacebook(input: PublishInput): Promise<PublishResult> {
   const page = input.account.external_id
-  const res = await call<{ id: string }>(`https://graph-video.facebook.com/${version()}/${page}/videos`, {
+  const token = input.accessToken
+  const reels = graph(`${page}/video_reels`)
+
+  const { video_id } = await call<{ video_id: string }>(reels, {
+    method: 'POST',
+    body: new URLSearchParams({ upload_phase: 'start', access_token: token }),
+  })
+
+  const upload = await fetch(`https://rupload.facebook.com/video-upload/${version()}/${video_id}`, {
+    method: 'POST',
+    headers: { Authorization: `OAuth ${token}`, file_url: input.videoUrl },
+  })
+  const uploaded = await upload.json().catch(() => ({}))
+  if (!upload.ok || !uploaded.success) {
+    const msg = uploaded.debug_info?.message ?? uploaded.error?.message ?? upload.statusText
+    throw new SocialError(`Meta: Reel upload failed: ${msg}`)
+  }
+
+  await call<{ success: boolean }>(reels, {
     method: 'POST',
     body: new URLSearchParams({
-      file_url: input.videoUrl,
+      upload_phase: 'finish',
+      video_id,
+      video_state: 'PUBLISHED',
       title: input.title.slice(0, 250),
       description: input.caption.slice(0, 5000),
-      access_token: input.accessToken,
+      access_token: token,
     }),
   })
-  const info = await call<{ permalink_url?: string }>(graph(`${res.id}?fields=permalink_url&access_token=${input.accessToken}`)).catch(
+
+  const info = await call<{ permalink_url?: string }>(graph(`${video_id}?fields=permalink_url&access_token=${token}`)).catch(
     () => ({}) as { permalink_url?: string },
   )
-  return { postId: res.id, permalink: info.permalink_url ? `https://www.facebook.com${info.permalink_url}` : null }
+  const link = info.permalink_url
+  return { postId: video_id, permalink: link ? (link.startsWith('http') ? link : `https://www.facebook.com${link}`) : null }
 }

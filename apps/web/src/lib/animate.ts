@@ -7,7 +7,7 @@ import type { AnalyzableVideo } from './clips'
 import { env } from './env'
 import { supabase } from './supabase'
 
-export type UploadedVideo = AnalyzableVideo & { source_path: string | null; created_at: string }
+export type UploadedVideo = AnalyzableVideo
 
 /** Whether the server has a fal.ai key for the AI styles (the Light filter always works). */
 export function useCartoonEngines() {
@@ -46,11 +46,24 @@ export function useUploads(workspaceId: string | undefined) {
         .from('streams')
         .select('*')
         .eq('workspace_id', workspaceId!)
-        .eq('kind', 'upload')
+        .eq('role', 'cartoon')
         .order('created_at', { ascending: false })
         .limit(50)
       if (error) throw error
       return data as UploadedVideo[]
+    },
+  })
+}
+
+/** One video from the library, e.g. the one picked with "Cartoonify" on the Creators or Clips page. */
+export function useVideo(id: string | null) {
+  return useQuery({
+    queryKey: ['video', id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('streams').select('*, creators(display_name)').eq('id', id!).maybeSingle()
+      if (error) throw error
+      return data as (AnalyzableVideo & { creators: { display_name: string } | null }) | null
     },
   })
 }
@@ -87,26 +100,61 @@ async function sendToStorage(file: File, path: string, onProgress: (pct: number)
   })
 }
 
+/** Adding your own videos to the library, cartoonifying any library video, and deleting your own. */
+export function useVideoActions(workspaceId: string | undefined) {
+  const queryClient = useQueryClient()
+  const [uploadPct, setUploadPct] = useState<number | null>(null)
+  const refresh = () => {
+    for (const key of ['videos', 'uploads', 'moments', 'clips', 'entitlements', 'jobs']) queryClient.invalidateQueries({ queryKey: [key] })
+  }
+  return {
+    uploadPct,
+    addFile: useMutation({
+      mutationFn: async (file: File) => {
+        const path = await uploadFile(workspaceId!, file, setUploadPct)
+        return api<{ id: string }>('/uploads', { body: { workspaceId, path, title: titleFromName(file.name) } })
+      },
+      onSuccess: refresh,
+    }),
+    addLink: useMutation({
+      mutationFn: (url: string) => api<{ id: string }>('/uploads/link', { body: { workspaceId, url } }),
+      onSuccess: refresh,
+    }),
+    cartoonify: useMutation({
+      mutationFn: ({ streamId, style, details }: { streamId: string; style: CartoonStyleId; details: string }) =>
+        api<{ id: string }>(`/streams/${streamId}/cartoonify`, { body: { style, details } }),
+      onSuccess: refresh,
+    }),
+    remove: useMutation({ mutationFn: (id: string) => api(`/uploads/${id}`, { method: 'DELETE' }), onSuccess: refresh }),
+  }
+}
+
+const titleFromName = (name: string) => name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim()
+
+async function uploadFile(workspaceId: string, file: File, onProgress: (pct: number | null) => void) {
+  const ext = file.name.match(/\.[a-z0-9]{2,5}$/i)?.[0].toLowerCase() ?? '.mp4'
+  const path = `${workspaceId}/${crypto.randomUUID()}${ext}`
+  onProgress(0)
+  try {
+    await sendToStorage(file, path, onProgress)
+  } finally {
+    onProgress(null)
+  }
+  return path
+}
+
 export function useAnimateActions(workspaceId: string | undefined) {
   const queryClient = useQueryClient()
   const [uploadPct, setUploadPct] = useState<number | null>(null)
   const refresh = () => {
-    for (const key of ['uploads', 'moments', 'clips', 'entitlements', 'jobs']) queryClient.invalidateQueries({ queryKey: [key] })
+    for (const key of ['videos', 'uploads', 'moments', 'clips', 'entitlements', 'jobs']) queryClient.invalidateQueries({ queryKey: [key] })
   }
   return {
     uploadPct,
     upload: useMutation({
       mutationFn: async ({ file, style, details }: { file: File; style: CartoonStyleId; details: string }) => {
-        const ext = file.name.match(/\.[a-z0-9]{2,5}$/i)?.[0].toLowerCase() ?? '.mp4'
-        const path = `${workspaceId}/${crypto.randomUUID()}${ext}`
-        setUploadPct(0)
-        try {
-          await sendToStorage(file, path, setUploadPct)
-        } finally {
-          setUploadPct(null)
-        }
-        const title = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim()
-        return api<{ id: string }>('/uploads', { body: { workspaceId, path, title, style, details } })
+        const path = await uploadFile(workspaceId!, file, setUploadPct)
+        return api<{ id: string }>('/uploads', { body: { workspaceId, path, title: titleFromName(file.name), style, details } })
       },
       onSuccess: refresh,
     }),

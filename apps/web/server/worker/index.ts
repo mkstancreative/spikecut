@@ -12,7 +12,7 @@ import { refundCredits } from '../clips'
 import { pickSegments, readSegments, segmentsToVideo, sessionDir } from '../live/segments'
 import { supabaseAdmin } from '../supabase'
 import { mediaDir, MAX_SOURCE_SECONDS, tools } from './config'
-import { cleanupSources, downloadSource, extractAudio, loudness, probeDuration, transcribe } from './media'
+import { cleanupSources, downloadSource, extractAudio, fetchUpload, loudness, probeDuration, probeTitle, transcribe, type ProgressFn } from './media'
 import { cartoonify, failCartoon, type CartoonJob } from './cartoon'
 import { publishDue } from './publisher'
 import { renderClip } from './render'
@@ -45,9 +45,14 @@ async function setStream(streamId: string, analysis_status: string, analysis_mes
 
 // ── Analyze
 
+/** The video file: from the uploads bucket for your own files, otherwise downloaded with yt-dlp. */
+function getSource(stream: { id: string; url: string; source_path: string | null }, onProgress: ProgressFn, signal?: AbortSignal) {
+  return stream.source_path ? fetchUpload(stream.source_path, stream.id, onProgress) : downloadSource(stream.url, stream.id, onProgress, signal)
+}
+
 async function analyze(job: Job, signal: AbortSignal) {
   const streamId = job.payload.streamId
-  const { data: stream } = await db.from('streams').select('id, url, title, duration_seconds').eq('id', streamId).single()
+  const { data: stream } = await db.from('streams').select('id, url, title, platform, duration_seconds, source_path').eq('id', streamId).single()
   if (!stream) throw new Error('Video no longer exists')
 
   const work = join(mediaDir, `job-${job.id}`)
@@ -61,12 +66,20 @@ async function analyze(job: Job, signal: AbortSignal) {
 
     // Overall bar: download 0–30 · audio 30–35 · transcribe 35–85 · scoring 85–100
     await step(1, 'Downloading video · 0%')
-    const source = await downloadSource(stream.url, streamId, (p, detail = '') => {
+    const source = await getSource(stream, (p, detail = '') => {
       const message = `Downloading video · ${Math.round(p)}%${detail}`
       progress(job.id, 1 + p * 0.29, message)
       setStream(streamId, 'running', message)
     }, signal)
     await ensureJobRunning(job.id)
+    // A pasted link starts with a placeholder title — swap in the post's real one.
+    if (stream.platform === 'link') {
+      const title = await probeTitle(stream.url).catch(() => null)
+      if (title) {
+        stream.title = title
+        await db.from('streams').update({ title }).eq('id', streamId)
+      }
+    }
     const duration = await probeDuration(source)
     if (duration > MAX_SOURCE_SECONDS) throw new Error(`Video is longer than ${Math.round(MAX_SOURCE_SECONDS / 3600)}h`)
 
@@ -108,7 +121,7 @@ async function analyze(job: Job, signal: AbortSignal) {
       : transcript.words.length < 20
         ? 'Not enough speech to find moments'
         : 'No strong moments found'
-    await setStream(streamId, 'done', message, { analyzed_at: new Date().toISOString() })
+    await setStream(streamId, 'done', message, { analyzed_at: new Date().toISOString(), duration_seconds: Math.round(duration) })
     await progress(job.id, 100, message, true)
   } finally {
     await rm(work, { recursive: true, force: true }) // audio + transcript are temporary
@@ -124,11 +137,11 @@ async function render(job: Job) {
   const momentId = job.payload.momentId
   const { data: moment } = await db
     .from('moments')
-    .select('id, stream_id, start_seconds, end_seconds, signals, streams(url)')
+    .select('id, stream_id, start_seconds, end_seconds, signals, streams(url, source_path)')
     .eq('id', momentId)
     .single()
   if (!moment) throw new Error('Moment no longer exists')
-  const streamUrl = (moment.streams as unknown as { url: string }).url
+  const streamInfo = moment.streams as unknown as { url: string; source_path: string | null }
 
   const { data: clip, error: clipErr } = await db
     .from('clips')
@@ -163,7 +176,7 @@ async function render(job: Job) {
       words = words.map(([s, e, t]) => [s - offset, e - offset, t])
       await progress(job.id, 25, 'Live footage ready', true)
     } else {
-      source = await downloadSource(streamUrl, moment.stream_id, (p, detail = '') =>
+      source = await getSource({ id: moment.stream_id, ...streamInfo }, (p, detail = '') =>
         progress(job.id, 1 + p * 0.24, `Downloading source · ${Math.round(p)}%${detail}`),
       )
     }

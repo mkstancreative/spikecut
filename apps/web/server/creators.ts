@@ -1,6 +1,6 @@
 import { BillingError } from './billing'
 import { getEntitlements } from './entitlements'
-import { enabledPlatforms, fetchRecent, resolveChannel, type Platform, type StreamSnapshot } from './platforms'
+import { enabledPlatforms, fetchRecent, perWorkspace, resolveChannel, type Platform, type StreamSnapshot } from './platforms'
 import { supabaseAdmin } from './supabase'
 
 export type CreatorRow = {
@@ -25,7 +25,7 @@ export async function addCreator(workspaceId: string, input: string) {
     throw new BillingError(`Your plan watches up to ${ent.limits.creators} creators. Remove one or upgrade.`, 403)
   }
 
-  const channel = await resolveChannel(input)
+  const channel = await resolveChannel(input, workspaceId)
   if (!enabledPlatforms().includes(channel.platform)) {
     throw new BillingError(`${channel.platform} isn’t connected on this server yet`, 503)
   }
@@ -62,14 +62,20 @@ export async function removeCreator(workspaceId: string, creatorId: string) {
 /** Check a set of creators (any mix of platforms/workspaces) and store what we find. */
 export async function refreshCreators(creators: CreatorRow[]) {
   const db = supabaseAdmin()
-  const byPlatform = new Map<Platform, CreatorRow[]>()
-  for (const c of creators) byPlatform.set(c.platform, [...(byPlatform.get(c.platform) ?? []), c])
+  // One batch per platform — or per platform and workspace where lookups use the workspace's own account.
+  const batches = new Map<string, { platform: Platform; workspaceId: string; group: CreatorRow[] }>()
+  for (const c of creators) {
+    const key = perWorkspace(c.platform) ? `${c.platform}:${c.workspace_id}` : c.platform
+    const batch = batches.get(key) ?? { platform: c.platform, workspaceId: c.workspace_id, group: [] }
+    batch.group.push(c)
+    batches.set(key, batch)
+  }
 
-  for (const [platform, group] of byPlatform) {
+  for (const { platform, workspaceId, group } of batches.values()) {
     const checkedAt = new Date().toISOString()
     let snapshots: Map<string, StreamSnapshot[]>
     try {
-      snapshots = await fetchRecent(platform, [...new Set(group.map((c) => c.channel_id))])
+      snapshots = await fetchRecent(platform, [...new Set(group.map((c) => c.channel_id))], workspaceId)
     } catch (e) {
       const message = (e as Error).message
       console.error(`[monitor] ${platform}:`, message)

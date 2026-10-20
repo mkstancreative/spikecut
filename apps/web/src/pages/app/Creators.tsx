@@ -1,13 +1,16 @@
-import { AlertTriangle, ExternalLink, Plus, RefreshCw, Trash2, Users } from 'lucide-react'
+import { AlertTriangle, ExternalLink, Plus, RefreshCw, Sparkles, Trash2, Users, Wand2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router'
 import { EmptyState } from '@/components/app/EmptyState'
 import { StreamCard } from '@/components/app/StreamCard'
 import { PageHeader } from '@/components/layout/AppLayout'
 import { ActionButton } from '@/components/ui/ActionButton'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { Alert, inputClasses } from '@/components/ui/Field'
+import { MAX_CARTOON_SECONDS } from '@/lib/animatePresets'
+import { useClipActions } from '@/lib/clips'
 import { cn } from '@/lib/cn'
-import { getPlatformMeta, timeAgo, useCreatorActions, useCreators, useStreams, type Creator } from '@/lib/creators'
+import { getPlatformMeta, timeAgo, useCreatorActions, useCreators, useStreams, type Creator, type Stream } from '@/lib/creators'
 import { useEntitlements, useWorkspace } from '@/lib/workspace'
 
 function CreatorCard({ creator, onRemove, onRefresh, busy }: { creator: Creator; onRemove: () => void; onRefresh: () => void; busy: boolean }) {
@@ -70,6 +73,36 @@ function CreatorCard({ creator, onRemove, onRefresh, busy }: { creator: Creator;
   )
 }
 
+/** Long videos can be mined for moments; anything up to the cartoon limit can be animated. */
+function VideoActions({ stream, onFind, finding, onCartoonify }: { stream: Stream; onFind: () => void; finding: boolean; onCartoonify: () => void }) {
+  const secs = stream.duration_seconds
+  const tooShort = secs != null && secs < 60
+  const tooLong = secs != null && secs > MAX_CARTOON_SECONDS
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <ActionButton
+        size="sm"
+        variant="secondary"
+        onClick={onFind}
+        loading={finding}
+        disabled={tooShort}
+        title={tooShort ? 'Under a minute — too short to find moments in' : 'Find the best moments and make clips'}
+      >
+        <Sparkles className="size-3.5" /> Find moments
+      </ActionButton>
+      <ActionButton
+        size="sm"
+        variant="secondary"
+        onClick={onCartoonify}
+        disabled={tooLong}
+        title={tooLong ? `Longer than ${MAX_CARTOON_SECONDS / 60} minutes — too long to cartoonify` : 'Turn this video into a cartoon'}
+      >
+        <Wand2 className="size-3.5" /> Cartoonify
+      </ActionButton>
+    </div>
+  )
+}
+
 export default function Creators() {
   const workspace = useWorkspace()
   const wsId = workspace.data?.id
@@ -77,6 +110,8 @@ export default function Creators() {
   const creators = useCreators(wsId)
   const recent = useStreams(wsId, { limit: 12 })
   const { add, remove, refresh } = useCreatorActions(wsId)
+  const { analyze } = useClipActions()
+  const navigate = useNavigate()
   const [url, setUrl] = useState('')
 
   const limit = ent.data?.limits.creators ?? 0
@@ -98,10 +133,10 @@ export default function Creators() {
           <input
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="Paste a YouTube or Twitch channel link — e.g. youtube.com/@channel"
+            placeholder="Paste a YouTube, Twitch, TikTok or Instagram profile link — e.g. tiktok.com/@creator"
             className={cn(inputClasses, 'flex-1')}
             disabled={full}
-            aria-label="Channel link"
+            aria-label="Profile link"
           />
           <ActionButton type="submit" loading={add.isPending} disabled={full || !url.trim()}>
             <Plus className="size-4" /> Add creator
@@ -136,15 +171,20 @@ export default function Creators() {
           <section>
             <h2 className="font-display text-xl font-bold">Latest from your creators</h2>
             <p className="mt-1 text-sm text-ink-400">
-              Recent uploads and past streams.{' '}
-              <a href="/app/clips" className="text-spike hover:underline">
-                Find moments in them →
-              </a>
+              Find the best moments in a long video, or turn any of them into a cartoon.
             </p>
+            {analyze.error && <Alert>{(analyze.error as Error).message}</Alert>}
             <ul className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {recent.data.map((s) => (
                 <li key={s.id}>
-                  <StreamCard stream={s} creator={byId.get(s.creator_id)} />
+                  <StreamCard stream={s} creator={byId.get(s.creator_id)}>
+                    <VideoActions
+                      stream={s}
+                      finding={analyze.isPending && analyze.variables === s.id}
+                      onFind={() => analyze.mutate(s.id, { onSuccess: () => navigate('/app/clips') })}
+                      onCartoonify={() => navigate(`/app/animate?video=${s.id}`)}
+                    />
+                  </StreamCard>
                 </li>
               ))}
             </ul>

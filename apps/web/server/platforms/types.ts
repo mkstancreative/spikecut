@@ -1,4 +1,4 @@
-export type Platform = 'youtube' | 'twitch' | 'kick'
+export type Platform = 'youtube' | 'twitch' | 'kick' | 'tiktok' | 'instagram'
 
 export type ResolvedChannel = {
   platform: Platform
