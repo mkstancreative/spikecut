@@ -1,0 +1,11 @@
+{
+  // Vercel type-checks functions with the tsconfig nearest to them; the root
+  // tsconfig.json only holds project references, so give api/ its own.
+  "extends": "../tsconfig.server.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"]
+  },
+  "include": ["./**/*.ts", "../server/**/*.ts"]
+}
