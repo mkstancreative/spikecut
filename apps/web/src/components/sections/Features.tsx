@@ -5,7 +5,7 @@ export const features = [
   {
     icon: Radar,
     title: 'Always-on monitoring',
-    body: 'Follow creators on YouTube, TikTok, Instagram and Twitch. Live streams are checked every minute, and new uploads land in your library. Or paste any video link — X included.',
+    body: 'Follow creators on YouTube, TikTok, Instagram and Twitch. New uploads land in your library and you can see who’s live right now. Or paste any video link — X included.',
   },
   {
     icon: Waves,

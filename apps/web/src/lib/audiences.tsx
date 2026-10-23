@@ -34,7 +34,7 @@ export const clippers: Audience = {
     {
       icon: Users,
       title: 'Cover a whole roster',
-      body: `Add creators by pasting a profile link — ${rosterSizes}. Live streams are checked every minute and new uploads land in your library.`,
+      body: `Add creators by pasting a profile link — ${rosterSizes}. New uploads land in your library, and you can see who’s live at a glance.`,
     },
     {
       icon: Waves,
@@ -98,7 +98,7 @@ export const creators: Audience = {
     {
       icon: Radio,
       title: 'Your streams, covered',
-      body: 'Add your YouTube, TikTok, Instagram or Twitch channel. Live streams are checked every minute and new uploads appear in your library on their own.',
+      body: 'Add your YouTube, TikTok, Instagram or Twitch channel and new uploads and past streams appear in your library on their own. Live clipping is coming soon.',
     },
     {
       icon: Waves,

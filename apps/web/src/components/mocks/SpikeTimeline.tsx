@@ -32,8 +32,8 @@ export function SpikeTimeline({ className, compact = false }: { className?: stri
     <div className={cn('card relative overflow-hidden p-4 sm:p-5', className)}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs">
-          <span className="size-2 animate-pulse-dot rounded-full bg-cut" />
-          <span className="font-mono tracking-wider text-ink-300 uppercase">Live · moment score</span>
+          <span className="size-2 rounded-full bg-spike" />
+          <span className="font-mono tracking-wider text-ink-300 uppercase">Moment score · 3 found</span>
         </div>
         <span className="font-mono text-[11px] text-ink-500">02:14:37</span>
       </div>

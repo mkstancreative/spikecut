@@ -20,8 +20,8 @@ export function LiveNow() {
         <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
           <SectionHeading
             eyebrow="Live right now"
-            title="Real streams in. Ready clips out."
-            intro="Live status and viewer counts come straight from each platform’s API. Open a stream and SpikeCut starts scoring it in seconds."
+            title="Know the moment they go live."
+            intro="See which of your creators are streaming right now, with viewer counts straight from each platform — checked every minute. Live clipping, with moments found while the stream is still going, is coming soon."
           />
           <Button to="/signup" variant="secondary" className="self-start lg:self-auto">
             Connect your channels
