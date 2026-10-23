@@ -1,5 +1,5 @@
-import { publishTo, SocialError } from '../social'
-import { supabaseAdmin } from '../supabase'
+import { publishTo, SocialError } from '../social/index.js'
+import { supabaseAdmin } from '../supabase.js'
 
 const MAX_ATTEMPTS = 3
 const RETRY_DELAY_MS = 10 * 60 * 1000

@@ -5,9 +5,9 @@ import { extname, join } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web'
-import { supabaseAdmin } from '../supabase'
-import { mediaDir, SOURCE_TTL_MS, tools, ytdlpAuthArgs } from './config'
-import { run } from './exec'
+import { supabaseAdmin } from '../supabase.js'
+import { mediaDir, SOURCE_TTL_MS, tools, ytdlpAuthArgs } from './config.js'
+import { run } from './exec.js'
 
 export type Word = { start: number; end: number; text: string }
 

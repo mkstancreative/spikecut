@@ -2,10 +2,10 @@
  * Background watcher: every MONITOR_INTERVAL_SECONDS, checks every active creator in a
  * workspace with a live plan. Runs locally via `npm run dev`; in production it moves to the worker host.
  */
-import { refreshCreators, type CreatorRow } from './creators'
-import { getEntitlements } from './entitlements'
-import { enabledPlatforms } from './platforms'
-import { supabaseAdmin } from './supabase'
+import { refreshCreators, type CreatorRow } from './creators.js'
+import { getEntitlements } from './entitlements.js'
+import { enabledPlatforms } from './platforms/index.js'
+import { supabaseAdmin } from './supabase.js'
 
 const intervalMs = Math.max(30, Number(process.env.MONITOR_INTERVAL_SECONDS ?? 60)) * 1000
 

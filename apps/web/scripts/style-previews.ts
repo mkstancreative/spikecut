@@ -7,10 +7,10 @@
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { cartoonStyles } from '../src/lib/animatePresets'
-import { tools } from '../server/worker/config'
-import { colourGrade, drawnLook } from '../server/worker/effects'
-import { run } from '../server/worker/exec'
+import { cartoonStyles } from '../src/lib/animatePresets.js'
+import { tools } from '../server/worker/config.js'
+import { colourGrade, drawnLook } from '../server/worker/effects.js'
+import { run } from '../server/worker/exec.js'
 
 const [photo, outArg] = process.argv.slice(2)
 if (!photo) {

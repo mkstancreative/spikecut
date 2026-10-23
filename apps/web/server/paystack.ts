@@ -1,4 +1,4 @@
-import { serverEnv } from './env'
+import { serverEnv } from './env.js'
 
 const BASE = 'https://api.paystack.co'
 

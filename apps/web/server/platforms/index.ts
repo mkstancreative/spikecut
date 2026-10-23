@@ -1,11 +1,11 @@
-import { metaEnabled } from '../social/meta'
-import { fetchInstagram, parseInstagram, resolveInstagram } from './instagram'
-import { fetchTikTok, parseTikTok, resolveTikTok } from './tiktok'
-import { fetchTwitch, parseTwitch, resolveTwitch, twitchEnabled } from './twitch'
-import { PlatformError, type Platform, type ResolvedChannel, type StreamSnapshot } from './types'
-import { fetchYouTube, parseYouTube, resolveYouTube, youtubeEnabled } from './youtube'
+import { metaEnabled } from '../social/meta.js'
+import { fetchInstagram, parseInstagram, resolveInstagram } from './instagram.js'
+import { fetchTikTok, parseTikTok, resolveTikTok } from './tiktok.js'
+import { fetchTwitch, parseTwitch, resolveTwitch, twitchEnabled } from './twitch.js'
+import { PlatformError, type Platform, type ResolvedChannel, type StreamSnapshot } from './types.js'
+import { fetchYouTube, parseYouTube, resolveYouTube, youtubeEnabled } from './youtube.js'
 
-export * from './types'
+export * from './types.js'
 
 export function detectPlatform(input: string): Platform | null {
   const s = input.trim().toLowerCase()

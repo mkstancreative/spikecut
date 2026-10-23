@@ -1,4 +1,4 @@
-import { PlatformError, type ResolvedChannel, type StreamSnapshot } from './types'
+import { PlatformError, type ResolvedChannel, type StreamSnapshot } from './types.js'
 
 const HELIX = 'https://api.twitch.tv/helix'
 let token: { value: string; expiresAt: number } | undefined

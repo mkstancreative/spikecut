@@ -4,16 +4,16 @@
  *
  *   npm run check:setup
  */
-import { serverEnv } from '../server/env'
-import { paystack } from '../server/paystack'
-import { resolveChannel } from '../server/platforms'
-import { twitchEnabled } from '../server/platforms/twitch'
-import { youtubeEnabled } from '../server/platforms/youtube'
-import { supabaseAdmin } from '../server/supabase'
+import { serverEnv } from '../server/env.js'
+import { paystack } from '../server/paystack.js'
+import { resolveChannel } from '../server/platforms/index.js'
+import { twitchEnabled } from '../server/platforms/twitch.js'
+import { youtubeEnabled } from '../server/platforms/youtube.js'
+import { supabaseAdmin } from '../server/supabase.js'
 import { existsSync } from 'node:fs'
-import { enabledProviders } from '../server/social'
-import { tools } from '../server/worker/config'
-import { run } from '../server/worker/exec'
+import { enabledProviders } from '../server/social/index.js'
+import { tools } from '../server/worker/config.js'
+import { run } from '../server/worker/exec.js'
 
 const tables = [
   'profiles',

@@ -1,5 +1,5 @@
 // AES-256-GCM token encryption + HMAC-signed OAuth state. WebCrypto only, so it runs on Node and Vercel edge.
-import type { SocialProvider } from './types'
+import type { SocialProvider } from './types.js'
 
 const enc = new TextEncoder()
 const dec = new TextDecoder()

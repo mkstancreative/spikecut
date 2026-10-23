@@ -6,14 +6,14 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { queueRender } from '../clips'
-import { getEntitlements } from '../entitlements'
-import { supabaseAdmin } from '../supabase'
-import { mediaDir, tools, ytdlpAuthArgs } from '../worker/config'
-import { run } from '../worker/exec'
-import { loudness, transcribe } from '../worker/media'
-import { findMoments } from '../worker/scoring'
-import { pickSegments, readSegments, segmentsToWav, sessionDir } from './segments'
+import { queueRender } from '../clips.js'
+import { getEntitlements } from '../entitlements.js'
+import { supabaseAdmin } from '../supabase.js'
+import { mediaDir, tools, ytdlpAuthArgs } from '../worker/config.js'
+import { run } from '../worker/exec.js'
+import { loudness, transcribe } from '../worker/media.js'
+import { findMoments } from '../worker/scoring.js'
+import { pickSegments, readSegments, segmentsToWav, sessionDir } from './segments.js'
 
 const TICK_MS = 15_000
 const ANALYZE_EVERY = Number(process.env.LIVE_ANALYZE_SECONDS ?? 120) // seconds of new footage per analysis

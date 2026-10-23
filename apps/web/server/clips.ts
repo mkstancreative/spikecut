@@ -1,5 +1,5 @@
-import { BillingError } from './billing'
-import { supabaseAdmin } from './supabase'
+import { BillingError } from './billing.js'
+import { supabaseAdmin } from './supabase.js'
 
 /** Give credits back (e.g. after a failed render). `ref` makes it safe to call twice. */
 export async function refundCredits(workspaceId: string, amount: number, ref: string) {

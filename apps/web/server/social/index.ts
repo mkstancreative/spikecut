@@ -1,13 +1,13 @@
-import { BillingError } from '../billing'
-import { getEntitlements } from '../entitlements'
-import { supabaseAdmin } from '../supabase'
-import { decrypt, encrypt } from './crypto'
-import { googleEnabled, googleRefresh, publishYouTube } from './google'
-import { metaEnabled, publishFacebook, publishInstagram } from './meta'
-import { publishTikTok, tiktokEnabled, tiktokRefresh } from './tiktok'
-import { SocialError, type ConnectedAccount, type PublishInput, type PublishResult, type SocialPlatform } from './types'
+import { BillingError } from '../billing.js'
+import { getEntitlements } from '../entitlements.js'
+import { supabaseAdmin } from '../supabase.js'
+import { decrypt, encrypt } from './crypto.js'
+import { googleEnabled, googleRefresh, publishYouTube } from './google.js'
+import { metaEnabled, publishFacebook, publishInstagram } from './meta.js'
+import { publishTikTok, tiktokEnabled, tiktokRefresh } from './tiktok.js'
+import { SocialError, type ConnectedAccount, type PublishInput, type PublishResult, type SocialPlatform } from './types.js'
 
-export * from './types'
+export * from './types.js'
 
 export function enabledProviders() {
   return { google: googleEnabled(), meta: metaEnabled(), tiktok: tiktokEnabled() }

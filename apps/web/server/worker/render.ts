@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { tools } from './config'
-import { run } from './exec'
+import { tools } from './config.js'
+import { run } from './exec.js'
 
 const OUT_W = 1080
 const OUT_H = 1920

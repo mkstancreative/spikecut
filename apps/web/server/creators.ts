@@ -1,7 +1,7 @@
-import { BillingError } from './billing'
-import { getEntitlements } from './entitlements'
-import { enabledPlatforms, fetchRecent, perWorkspace, resolveChannel, type Platform, type StreamSnapshot } from './platforms'
-import { supabaseAdmin } from './supabase'
+import { BillingError } from './billing.js'
+import { getEntitlements } from './entitlements.js'
+import { enabledPlatforms, fetchRecent, perWorkspace, resolveChannel, type Platform, type StreamSnapshot } from './platforms/index.js'
+import { supabaseAdmin } from './supabase.js'
 
 export type CreatorRow = {
   id: string

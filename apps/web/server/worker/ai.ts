@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { z } from 'zod'
-import { bounds, MAX_LEN, MIN_LEN, type VideoIndex } from './scoring'
+import { bounds, MAX_LEN, MIN_LEN, type VideoIndex } from './scoring.js'
 
 /**
  * Claude as the clip editor: it reads the sentence-numbered transcript (with laughter/loudness marks)

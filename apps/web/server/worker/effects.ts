@@ -5,9 +5,9 @@
  * Both write a silent MP4; cartoonify() adds the original audio back.
  */
 import { join } from 'node:path'
-import type { CartoonStyleId } from '../../src/lib/animatePresets'
-import { tools } from './config'
-import { run } from './exec'
+import type { CartoonStyleId } from '../../src/lib/animatePresets.js'
+import { tools } from './config.js'
+import { run } from './exec.js'
 
 type Progress = (pct: number) => void
 

@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { mediaDir, tools } from '../worker/config'
-import { run } from '../worker/exec'
+import { mediaDir, tools } from '../worker/config.js'
+import { run } from '../worker/exec.js'
 
 /**
  * A live recording is a folder of ~10s MPEG-TS chunks plus ffmpeg's segment list (filename,start,end),

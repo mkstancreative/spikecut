@@ -1,4 +1,4 @@
-import { redirectUri, SocialError, type ConnectedAccount, type PublishInput, type PublishResult } from './types'
+import { redirectUri, SocialError, type ConnectedAccount, type PublishInput, type PublishResult } from './types.js'
 
 // user.info.basic for the name/avatar; video.publish to Direct Post. Until TikTok audits the app,
 // Direct Post only allows private (SELF_ONLY) posts — creator_info tells us what's allowed.

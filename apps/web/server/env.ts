@@ -1,4 +1,4 @@
-import { parseCurrencies } from '../src/lib/pricing'
+import { parseCurrencies } from '../src/lib/pricing.js'
 
 function required(name: string): string {
   const value = process.env[name]?.trim()

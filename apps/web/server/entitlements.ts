@@ -1,5 +1,5 @@
-import { limitsFor, type Limits, type PlanId } from '../src/lib/pricing'
-import { supabaseAdmin } from './supabase'
+import { limitsFor, type Limits, type PlanId } from '../src/lib/pricing.js'
+import { supabaseAdmin } from './supabase.js'
 
 export type ServerEntitlements = { planId: PlanId; credits: number; limits: Limits }
 

@@ -1,5 +1,5 @@
-import { pickWithClaude } from './ai'
-import type { AudioEvent, Transcript, Word } from './media'
+import { pickWithClaude } from './ai.js'
+import type { AudioEvent, Transcript, Word } from './media.js'
 
 /**
  * Moment detection.

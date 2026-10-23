@@ -1,4 +1,4 @@
-import { redirectUri, SocialError, type ConnectedAccount, type PublishInput, type PublishResult } from './types'
+import { redirectUri, SocialError, type ConnectedAccount, type PublishInput, type PublishResult } from './types.js'
 
 // youtube.upload to post Shorts; youtube.readonly to read the channel name/avatar.
 const SCOPES = ['https://www.googleapis.com/auth/youtube.upload', 'https://www.googleapis.com/auth/youtube.readonly']

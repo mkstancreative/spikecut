@@ -1,13 +1,13 @@
-import { getPlan, type Currency, type Plan } from '../src/lib/pricing'
-import { serverEnv } from './env'
+import { getPlan, type Currency, type Plan } from '../src/lib/pricing.js'
+import { serverEnv } from './env.js'
 import {
   paystack,
   planCodeOf,
   type PaystackCustomer,
   type PaystackSubscription,
   type PaystackTransaction,
-} from './paystack'
-import { supabaseAdmin } from './supabase'
+} from './paystack.js'
+import { supabaseAdmin } from './supabase.js'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 // Monthly credits stay usable for a short grace window after the renewal date,

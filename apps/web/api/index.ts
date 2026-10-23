@@ -1,5 +1,5 @@
 import { handle } from 'hono/vercel'
-import { app } from '../server/app'
+import { app } from '../server/app.js'
 
 // All /api/* requests are rewritten here (see vercel.json) and routed by Hono.
 export const config = { runtime: 'edge' }

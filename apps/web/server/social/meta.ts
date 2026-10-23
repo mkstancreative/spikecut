@@ -1,4 +1,4 @@
-import { redirectUri, SocialError, type ConnectedAccount, type PublishInput, type PublishResult } from './types'
+import { redirectUri, SocialError, type ConnectedAccount, type PublishInput, type PublishResult } from './types.js'
 
 // Facebook Login covers both Facebook Pages and the Instagram professional accounts linked to them.
 const SCOPES = [

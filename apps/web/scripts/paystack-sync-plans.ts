@@ -4,10 +4,10 @@
  *
  *   npm run paystack:sync-plans
  */
-import { plans } from '../src/lib/pricing'
-import { serverEnv } from '../server/env'
-import { paystack } from '../server/paystack'
-import { supabaseAdmin } from '../server/supabase'
+import { plans } from '../src/lib/pricing.js'
+import { serverEnv } from '../server/env.js'
+import { paystack } from '../server/paystack.js'
+import { supabaseAdmin } from '../server/supabase.js'
 
 type PaystackPlan = { plan_code: string; name: string; amount: number; currency: string; interval: string }
 

@@ -1,6 +1,6 @@
-import { decrypt } from '../social/crypto'
-import { supabaseAdmin } from '../supabase'
-import { PlatformError, type ResolvedChannel, type StreamSnapshot } from './types'
+import { decrypt } from '../social/crypto.js'
+import { supabaseAdmin } from '../supabase.js'
+import { PlatformError, type ResolvedChannel, type StreamSnapshot } from './types.js'
 
 /**
  * Instagram creators are read through Business Discovery, using an Instagram professional account the workspace

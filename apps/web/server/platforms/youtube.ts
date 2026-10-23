@@ -1,4 +1,4 @@
-import { PlatformError, type ResolvedChannel, type StreamSnapshot } from './types'
+import { PlatformError, type ResolvedChannel, type StreamSnapshot } from './types.js'
 
 const API = 'https://www.googleapis.com/youtube/v3'
 

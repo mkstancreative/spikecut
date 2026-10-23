@@ -1,7 +1,7 @@
 import { Hono, type Context } from 'hono'
-import { cartoonStyle, MAX_CARTOON_SECONDS, MAX_DETAILS_CHARS } from '../src/lib/animatePresets'
-import { getPlan, type Currency } from '../src/lib/pricing'
-import { getEntitlements } from './entitlements'
+import { cartoonStyle, MAX_CARTOON_SECONDS, MAX_DETAILS_CHARS } from '../src/lib/animatePresets.js'
+import { getPlan, type Currency } from '../src/lib/pricing.js'
+import { getEntitlements } from './entitlements.js'
 import {
   applySuccessfulCharge,
   BillingError,
@@ -10,20 +10,20 @@ import {
   startCheckout,
   upsertSubscription,
   workspaceForCustomer,
-} from './billing'
-import { queueRender } from './clips'
-import { addCreator, refreshCreators, removeCreator, type CreatorRow } from './creators'
-import { serverEnv } from './env'
-import { PlatformError } from './platforms'
-import { paystack, PaystackError, verifyPaystackSignature, type PaystackSubscription, type PaystackTransaction } from './paystack'
-import { enabledProviders, saveAccounts, SocialError } from './social'
-import { signState, verifyState } from './social/crypto'
-import { googleAuthUrl, googleExchange } from './social/google'
-import { metaAuthUrl, metaExchange } from './social/meta'
-import { tiktokAuthUrl, tiktokExchange } from './social/tiktok'
-import type { SocialProvider } from './social/types'
-import { supabaseAdmin } from './supabase'
-import { falEnabled } from './worker/fal'
+} from './billing.js'
+import { queueRender } from './clips.js'
+import { addCreator, refreshCreators, removeCreator, type CreatorRow } from './creators.js'
+import { serverEnv } from './env.js'
+import { PlatformError } from './platforms/index.js'
+import { paystack, PaystackError, verifyPaystackSignature, type PaystackSubscription, type PaystackTransaction } from './paystack.js'
+import { enabledProviders, saveAccounts, SocialError } from './social/index.js'
+import { signState, verifyState } from './social/crypto.js'
+import { googleAuthUrl, googleExchange } from './social/google.js'
+import { metaAuthUrl, metaExchange } from './social/meta.js'
+import { tiktokAuthUrl, tiktokExchange } from './social/tiktok.js'
+import type { SocialProvider } from './social/types.js'
+import { supabaseAdmin } from './supabase.js'
+import { falEnabled } from './worker/fal.js'
 
 type AuthedUser = { id: string; email: string }
 

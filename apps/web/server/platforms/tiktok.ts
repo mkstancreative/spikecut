@@ -1,6 +1,6 @@
-import { run } from '../worker/exec'
-import { tools, ytdlpAuthArgs } from '../worker/config'
-import { PlatformError, type ResolvedChannel, type StreamSnapshot } from './types'
+import { run } from '../worker/exec.js'
+import { tools, ytdlpAuthArgs } from '../worker/config.js'
+import { PlatformError, type ResolvedChannel, type StreamSnapshot } from './types.js'
 
 // TikTok has no public API for other people's videos, so profiles are read with yt-dlp (needs the binary on this host).
 
