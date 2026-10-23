@@ -25,8 +25,8 @@ export function Hero() {
             <span className="text-spike">Ship the clip.</span>
           </h1>
           <p className="mt-6 max-w-lg text-lg text-pretty text-ink-400">
-            Pick the streamers you clip. SpikeCut watches every broadcast, spots the moments chat loses its mind, and
-            turns them into captioned vertical clips that post themselves.
+            Pick the creators you clip. SpikeCut watches their streams and uploads, finds the moments worth posting, and
+            turns them into captioned vertical clips — or full cartoons — ready to schedule everywhere.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Button to="/signup" size="lg">

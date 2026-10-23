@@ -8,7 +8,7 @@ import { cn } from '@/lib/cn'
 const streams = [
   { name: 'novaplays', title: 'Ranked grind to top 500 — !socials', category: 'Valorant', platform: 'Twitch', viewers: 18240, hue: 'from-fuchsia-600/70 via-violet-700/60 to-ink-900' },
   { name: 'thekitchenlab', title: 'Cooking jollof for 200 people LIVE', category: 'Food & Drink', platform: 'YouTube', viewers: 6410, hue: 'from-orange-500/70 via-red-700/50 to-ink-900' },
-  { name: 'kaizenfps', title: 'Tournament qualifiers day 2', category: 'Counter-Strike', platform: 'Kick', viewers: 3120, hue: 'from-emerald-500/60 via-teal-800/60 to-ink-900' },
+  { name: 'kaizenfps', title: 'Tournament qualifiers day 2', category: 'Counter-Strike', platform: 'TikTok', viewers: 3120, hue: 'from-emerald-500/60 via-teal-800/60 to-ink-900' },
 ]
 
 const fmt = new Intl.NumberFormat('en', { notation: 'compact' })

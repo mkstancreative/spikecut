@@ -5,17 +5,18 @@ const platformStyles = {
   YT: 'bg-red-500/15 text-red-300',
   IG: 'bg-pink-500/15 text-pink-300',
   FB: 'bg-blue-500/15 text-blue-300',
+  TT: 'bg-cyan-400/15 text-cyan-300',
 } as const
 type P = keyof typeof platformStyles
 
 const schedule: { time: string; p: P; done?: boolean }[][] = [
   [{ time: '09:00', p: 'YT', done: true }, { time: '18:30', p: 'IG', done: true }],
-  [{ time: '12:15', p: 'IG', done: true }],
+  [{ time: '12:15', p: 'TT', done: true }],
   [{ time: '09:00', p: 'YT', done: true }, { time: '20:00', p: 'FB' }],
-  [{ time: '17:45', p: 'IG' }],
+  [{ time: '17:45', p: 'TT' }],
   [{ time: '09:00', p: 'YT' }, { time: '19:00', p: 'IG' }],
   [{ time: '14:00', p: 'FB' }],
-  [{ time: '11:00', p: 'YT' }, { time: '21:00', p: 'IG' }],
+  [{ time: '11:00', p: 'YT' }, { time: '21:00', p: 'TT' }],
 ]
 
 export function PublishCalendar({ className }: { className?: string }) {
@@ -23,7 +24,7 @@ export function PublishCalendar({ className }: { className?: string }) {
     <div className={cn('card p-4', className)}>
       <div className="flex items-center justify-between">
         <p className="font-mono text-[11px] tracking-wider text-ink-400 uppercase">This week · 12 clips</p>
-        <span className="font-mono text-[11px] text-spike">auto</span>
+        <span className="font-mono text-[11px] text-spike">queued</span>
       </div>
       <div className="mt-3 grid grid-cols-7 gap-1.5">
         {days.map((d, i) => (

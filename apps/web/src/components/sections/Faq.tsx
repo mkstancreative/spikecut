@@ -7,12 +7,20 @@ const faqs = [
     a: 'No. Source footage is held only as long as it takes to find moments and render clips, then it’s deleted. Your finished clips stay in your library until you remove them.',
   },
   {
-    q: 'Can clips publish without me checking them?',
-    a: 'Yes. Each creator you watch can be set to “review first” or “auto-publish”. Most clippers start with review and switch to auto once they trust the scoring.',
+    q: 'Do I choose which clips get posted?',
+    a: 'Yes. SpikeCut finds and ranks the moments; you pick the ones worth a clip and schedule each one for when and where it should go out. Nothing posts without you queuing it.',
   },
   {
     q: 'Which platforms can I watch and post to?',
-    a: 'We watch Twitch, YouTube, Kick and podcast feeds. We post to YouTube Shorts, Instagram Reels and Facebook. TikTok posting is in review and coming soon.',
+    a: 'We watch creators on YouTube, TikTok, Instagram and Twitch, and you can paste a single video link from those or X. We post to YouTube Shorts, TikTok, Instagram Reels and Facebook Pages. Kick support is coming soon.',
+  },
+  {
+    q: 'Do TikTok posts go up publicly?',
+    a: 'Until TikTok finishes approving SpikeCut, posts land on your profile as private (“Only me”). You can switch them to public in the TikTok app in one tap.',
+  },
+  {
+    q: 'What is Animate?',
+    a: 'Animate turns a whole video into a cartoon — 3D animated, anime, claymation or comic book — and you can describe the scene you want. Those AI styles use credits. Filters like watercolour, pencil sketch, teal & orange, golden hour, vintage film and noir are free.',
   },
   {
     q: 'Do I need permission from the creator?',
@@ -20,7 +28,7 @@ const faqs = [
   },
   {
     q: 'What happens when I run out of clips for the month?',
-    a: 'Monitoring keeps running and moments are still detected, but rendering pauses until your plan renews or you upgrade. You can top up with a Day Pass at any time.',
+    a: 'Monitoring and moment finding are free, so they keep running — but making new clips pauses until your plan renews or you upgrade. You can top up with a Day Pass at any time.',
   },
   {
     q: 'Does the Day Pass renew automatically?',

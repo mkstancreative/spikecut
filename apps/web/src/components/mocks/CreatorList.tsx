@@ -5,8 +5,8 @@ import { cn } from '@/lib/cn'
 const creators = [
   { handle: 'novaplays', platform: 'Twitch', live: true, viewers: '18.2K', hue: 'from-fuchsia-500 to-orange-400' },
   { handle: 'thekitchenlab', platform: 'YouTube', live: true, viewers: '6.4K', hue: 'from-sky-400 to-emerald-400' },
-  { handle: 'deadlinepod', platform: 'Podcast', live: false, viewers: 'New ep.', hue: 'from-amber-300 to-rose-500' },
-  { handle: 'kaizenfps', platform: 'Kick', live: false, viewers: 'Offline', hue: 'from-lime-300 to-teal-500' },
+  { handle: 'deadlinepod', platform: 'TikTok', live: false, viewers: 'New video', hue: 'from-amber-300 to-rose-500' },
+  { handle: 'kaizenfps', platform: 'Instagram', live: false, viewers: 'Offline', hue: 'from-lime-300 to-teal-500' },
 ]
 
 export function CreatorList({ className }: { className?: string }) {

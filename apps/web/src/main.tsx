@@ -12,6 +12,7 @@ import { Faq } from '@/components/sections/Faq'
 import { Features } from '@/components/sections/Features'
 import { HowItWorks } from '@/components/sections/HowItWorks'
 import { Pricing } from '@/components/sections/Pricing'
+import { clippers, creators } from '@/lib/audiences'
 import { AuthProvider } from '@/lib/auth'
 import Accounts from '@/pages/app/Accounts'
 import Billing from '@/pages/app/Billing'
@@ -29,6 +30,7 @@ import ForgotPassword from '@/pages/auth/ForgotPassword'
 import Login from '@/pages/auth/Login'
 import ResetPassword from '@/pages/auth/ResetPassword'
 import Signup from '@/pages/auth/Signup'
+import AudiencePage from '@/pages/AudiencePage'
 import ComingSoon from '@/pages/ComingSoon'
 import Home from '@/pages/Home'
 import SectionPage from '@/pages/SectionPage'
@@ -36,8 +38,6 @@ import './index.css'
 
 // Marketing pages still to be written render a placeholder so every nav link resolves.
 const stubs: { path: string; title: string; blurb: string }[] = [
-  { path: 'for-clippers', title: 'For clippers', blurb: 'How solo clippers scale to a roster of creators with SpikeCut.' },
-  { path: 'for-creators', title: 'For creators', blurb: 'Turn every stream into a week of Shorts and Reels on your own channels.' },
   { path: 'for-agencies', title: 'For agencies', blurb: 'Client workspaces, seats, approvals and bulk scheduling.' },
   { path: 'guide', title: 'Clipping guide', blurb: 'Everything you need to start earning as a clipper.' },
   { path: 'kit', title: 'Starter kit', blurb: 'Templates, caption styles and outreach scripts for new clippers.' },
@@ -68,6 +68,8 @@ const router = createBrowserRouter([
       { path: 'features', element: <SectionPage><Features /></SectionPage> },
       { path: 'how-it-works', element: <SectionPage><HowItWorks /></SectionPage> },
       { path: 'pricing', element: <SectionPage><Pricing /><Faq /></SectionPage> },
+      { path: 'for-clippers', element: <AudiencePage audience={clippers} /> },
+      { path: 'for-creators', element: <AudiencePage audience={creators} /> },
       ...stubs.map((s) => ({ path: s.path, element: <ComingSoon title={s.title} blurb={s.blurb} /> })),
       { path: '*', element: <ComingSoon title="Page not found" blurb="That link doesn’t go anywhere yet." /> },
     ],

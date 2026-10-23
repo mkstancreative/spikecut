@@ -12,7 +12,7 @@ function seeded(seed: number) {
 const BAR_COUNT = 40
 const SPIKES: Record<number, { label: string; score: number }> = {
   9: { label: 'Clutch 1v3', score: 94 },
-  23: { label: 'Chat erupts', score: 88 },
+  23: { label: 'Crowd erupts', score: 88 },
   33: { label: 'Rage quit', score: 81 },
 }
 
@@ -33,7 +33,7 @@ export function SpikeTimeline({ className, compact = false }: { className?: stri
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs">
           <span className="size-2 animate-pulse-dot rounded-full bg-cut" />
-          <span className="font-mono tracking-wider text-ink-300 uppercase">Live · chat velocity</span>
+          <span className="font-mono tracking-wider text-ink-300 uppercase">Live · moment score</span>
         </div>
         <span className="font-mono text-[11px] text-ink-500">02:14:37</span>
       </div>

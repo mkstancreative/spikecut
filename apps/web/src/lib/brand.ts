@@ -3,7 +3,7 @@ export const brand = {
   name: 'SpikeCut',
   tagline: 'Catch the spike. Ship the clip.',
   description:
-    'SpikeCut watches the streamers you clip, detects the moments chat goes wild, and turns them into captioned vertical clips that publish themselves.',
+    'SpikeCut watches the creators you clip, finds the moments worth posting, and turns them into captioned vertical clips and cartoons scheduled to every platform.',
   domain: 'spikecut.com',
   email: 'hello@spikecut.com',
   social: {

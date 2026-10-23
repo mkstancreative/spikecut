@@ -1,3 +1,4 @@
+import { AnimateStyles } from '@/components/sections/AnimateStyles'
 import { Audiences } from '@/components/sections/Audiences'
 import { Faq } from '@/components/sections/Faq'
 import { Features } from '@/components/sections/Features'
@@ -16,6 +17,7 @@ export default function Home() {
       <HowItWorks />
       <LiveNow />
       <Features />
+      <AnimateStyles />
       <Audiences />
       <Pricing />
       <Faq />

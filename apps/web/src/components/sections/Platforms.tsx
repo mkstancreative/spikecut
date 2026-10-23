@@ -1,13 +1,13 @@
 import { cn } from '@/lib/cn'
 
 const platforms = [
-  { name: 'Twitch', dot: 'bg-violet-400', note: 'Watch' },
   { name: 'YouTube', dot: 'bg-red-500', note: 'Watch + post' },
-  { name: 'Kick', dot: 'bg-lime-400', note: 'Watch' },
-  { name: 'Podcasts', dot: 'bg-amber-400', note: 'Watch' },
-  { name: 'Instagram', dot: 'bg-pink-500', note: 'Post' },
+  { name: 'TikTok', dot: 'bg-cyan-400', note: 'Watch + post' },
+  { name: 'Instagram', dot: 'bg-pink-500', note: 'Watch + post' },
+  { name: 'Twitch', dot: 'bg-violet-400', note: 'Watch' },
   { name: 'Facebook', dot: 'bg-blue-500', note: 'Post' },
-  { name: 'TikTok', dot: 'bg-ink-400', note: 'Soon', soon: true },
+  { name: 'X', dot: 'bg-ink-100', note: 'Paste links' },
+  { name: 'Kick', dot: 'bg-lime-400', note: 'Soon', soon: true },
 ]
 
 export function Platforms() {

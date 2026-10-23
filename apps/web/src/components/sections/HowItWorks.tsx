@@ -9,17 +9,17 @@ import { SectionHeading } from '@/components/ui/SectionHeading'
 const steps: { title: string; body: string; visual: ReactNode }[] = [
   {
     title: 'Pick who to clip',
-    body: 'Paste a channel link from Twitch, YouTube, Kick or a podcast feed. SpikeCut starts watching the moment they go live or upload.',
+    body: 'Paste a profile link from YouTube, TikTok, Instagram or Twitch. SpikeCut starts watching for live streams and new uploads — or drop in any single video link.',
     visual: <CreatorList />,
   },
   {
     title: 'We catch the spikes',
-    body: 'Chat velocity, audio peaks and transcript hooks are scored together, so you get the moments people actually reacted to — not random cuts.',
+    body: 'AI reads the transcript and listens for peaks, laughter and pace, so you get the moments worth watching — never cut mid-sentence. Finding moments is free.',
     visual: <SpikeTimeline compact />,
   },
   {
     title: 'Clips edit themselves',
-    body: 'Each moment is trimmed, reframed to 9:16 around the speaker and captioned word-by-word in your style. Approve, tweak, or let it fly.',
+    body: 'Pick a moment and it’s trimmed, reframed to 9:16 around the speaker and captioned word-by-word. Or send the whole video to Animate and get it back as a cartoon.',
     visual: (
       <div className="mx-auto w-40">
         <PhoneClip />
@@ -28,7 +28,7 @@ const steps: { title: string; body: string; visual: ReactNode }[] = [
   },
   {
     title: 'Posted on schedule',
-    body: 'Clips publish to YouTube Shorts, Instagram Reels and Facebook at the times your audience is most active.',
+    body: 'Clips publish to YouTube Shorts, TikTok, Instagram Reels and Facebook at the times you choose.',
     visual: <PublishCalendar />,
   },
 ]

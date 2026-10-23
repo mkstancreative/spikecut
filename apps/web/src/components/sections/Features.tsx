@@ -1,16 +1,16 @@
-import { BarChart3, Captions, Crop, Radar, Send, Waves } from 'lucide-react'
+import { Captions, Crop, Radar, Send, Wand2, Waves } from 'lucide-react'
 import { SectionHeading } from '@/components/ui/SectionHeading'
 
 export const features = [
   {
     icon: Radar,
     title: 'Always-on monitoring',
-    body: 'Twitch, YouTube, Kick and podcast feeds watched around the clock. New streams are picked up within a minute of going live.',
+    body: 'Follow creators on YouTube, TikTok, Instagram and Twitch. Live streams are checked every minute, and new uploads land in your library. Or paste any video link — X included.',
   },
   {
     icon: Waves,
-    title: 'Spike detection',
-    body: 'Chat velocity, emote bursts, audio peaks and transcript hooks combine into one score so the best moments rise to the top.',
+    title: 'AI moment finding',
+    body: 'AI reads the whole transcript for stories, punchlines and hooks, blended with audio peaks, laughter and pace. Finding moments is free — credits only go on clips you make.',
   },
   {
     icon: Crop,
@@ -23,14 +23,14 @@ export const features = [
     body: 'Animated captions with highlight colours, emoji and safe zones. Save your look as a reusable style.',
   },
   {
-    icon: Send,
-    title: 'Hands-free publishing',
-    body: 'Schedule to YouTube Shorts, Instagram Reels and Facebook with per-platform titles and hashtags. TikTok is next.',
+    icon: Wand2,
+    title: 'Animate into cartoons',
+    body: 'Turn any video into 3D animation, anime, claymation or comic book — and describe the scene you want. Filters like watercolour, pencil sketch and film grades are free.',
   },
   {
-    icon: BarChart3,
-    title: 'Growth analytics',
-    body: 'See which creators, hooks and caption styles earn the views, then let SpikeCut lean into what works.',
+    icon: Send,
+    title: 'Scheduled publishing',
+    body: 'Queue clips and cartoons to YouTube Shorts, TikTok, Instagram Reels and Facebook Pages, timed in your own time zone.',
   },
 ]
 
