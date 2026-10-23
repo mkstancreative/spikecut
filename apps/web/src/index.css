@@ -53,7 +53,7 @@
 }
 
 @utility container-page {
-  @apply mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8;
+  @apply mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 xl:max-w-7xl xl:px-10 2xl:max-w-[1536px] 2xl:px-12;
 }
 
 @utility card {
